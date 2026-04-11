@@ -328,6 +328,7 @@ private extension ViewController {
                 let button = tileButtons[row][column]
                 button.setTitle(tile.kind.symbol, for: .normal)
                 button.backgroundColor = tile.kind.color
+                button.transform = .identity
 
                 let isSelected = selectedPosition == GridPosition(row: row, column: column)
                 button.layer.borderWidth = isSelected ? 3 : 0
@@ -391,22 +392,12 @@ private extension ViewController {
             isResolvingMove = true
             movesCount += 1
             updateStatus("Фишки обменены. Проверяем совпадение...")
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                guard let self else { return }
-                let result = self.board.resolveCurrentMatches()
-                self.score += result.totalRemoved * 10
-                self.collectedGoalTiles += result.removedByKind[self.currentLevel.goal.targetKind, default: 0]
-                self.isResolvingMove = false
-                self.renderBoard()
-                self.updateStatus("Совпадение найдено. Удалено фишек: \(result.totalRemoved).")
-                self.evaluateLevelState()
-            }
+            animateResolveChain(totalRemoved: 0, removedByKind: [:])
         } else {
             isResolvingMove = true
             updateStatus("Совпадения нет. Возвращаем фишки назад.")
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 guard let self else { return }
                 self.board.swapTiles(at: currentSelection, and: position)
                 self.isResolvingMove = false
@@ -414,6 +405,86 @@ private extension ViewController {
                 self.updateStatus("Совпадения нет. Обмен отменен.")
             }
         }
+    }
+
+    func animateResolveChain(totalRemoved: Int, removedByKind: [TileKind: Int]) {
+        let matched = board.currentMatches()
+        guard !matched.isEmpty else {
+            score += totalRemoved * 10
+            collectedGoalTiles += removedByKind[currentLevel.goal.targetKind, default: 0]
+            isResolvingMove = false
+            renderBoard()
+            updateStatus("Совпадение найдено. Удалено фишек: \(totalRemoved).")
+            evaluateLevelState()
+            return
+        }
+
+        var updatedByKind = removedByKind
+        for pos in matched {
+            updatedByKind[board.tiles[pos.row][pos.column].kind, default: 0] += 1
+        }
+        let updatedTotal = totalRemoved + matched.count
+
+        animateRemoval(at: matched) { [weak self] in
+            guard let self else { return }
+            let drops = self.board.refillAfterRemoval(matched)
+            self.renderBoard()
+            self.prepareDropTransforms(drops)
+
+            self.animateDrops(drops) { [weak self] in
+                guard let self else { return }
+                self.animateResolveChain(totalRemoved: updatedTotal, removedByKind: updatedByKind)
+            }
+        }
+    }
+
+    func animateRemoval(at positions: Set<GridPosition>, completion: @escaping () -> Void) {
+        UIView.animate(withDuration: 0.2, animations: {
+            for pos in positions {
+                let button = self.tileButtons[pos.row][pos.column]
+                button.transform = CGAffineTransform(scaleX: 0.01, y: 0.01)
+                button.alpha = 0
+            }
+        }, completion: { _ in
+            completion()
+        })
+    }
+
+    func prepareDropTransforms(_ drops: [TileDrop]) {
+        for drop in drops {
+            let button = tileButtons[drop.toRow][drop.column]
+            let rowDelta = CGFloat(drop.toRow - drop.fromRow)
+            let cellHeight = button.bounds.height + 8
+            button.transform = CGAffineTransform(translationX: 0, y: -rowDelta * cellHeight)
+            if drop.fromRow < 0 {
+                button.alpha = 0
+            }
+        }
+    }
+
+    func animateDrops(_ drops: [TileDrop], completion: @escaping () -> Void) {
+        guard !drops.isEmpty else {
+            completion()
+            return
+        }
+
+        UIView.animate(
+            withDuration: 0.35,
+            delay: 0,
+            usingSpringWithDamping: 0.7,
+            initialSpringVelocity: 0,
+            options: [],
+            animations: {
+                for drop in drops {
+                    let button = self.tileButtons[drop.toRow][drop.column]
+                    button.transform = .identity
+                    button.alpha = 1
+                }
+            },
+            completion: { _ in
+                completion()
+            }
+        )
     }
 
     func evaluateLevelState() {
@@ -612,6 +683,49 @@ private struct Match3Board {
         resolve(matches: allMatches())
     }
 
+    func currentMatches() -> Set<GridPosition> {
+        allMatches()
+    }
+
+    mutating func refillAfterRemoval(_ matchedPositions: Set<GridPosition>) -> [TileDrop] {
+        var drops: [TileDrop] = []
+
+        for column in 0..<size {
+            var remainingTiles: [Match3Tile] = []
+            var originalRows: [Int] = []
+
+            for row in 0..<size where !matchedPositions.contains(GridPosition(row: row, column: column)) {
+                remainingTiles.append(tiles[row][column])
+                originalRows.append(row)
+            }
+
+            let removedCount = size - remainingTiles.count
+
+            for (index, originalRow) in originalRows.enumerated() {
+                let newRow = removedCount + index
+                if newRow != originalRow {
+                    drops.append(TileDrop(column: column, fromRow: originalRow, toRow: newRow))
+                }
+            }
+
+            while remainingTiles.count < size {
+                let row = size - remainingTiles.count - 1
+                let forbidden = forbiddenKinds(row: row, column: column, currentColumn: remainingTiles)
+                remainingTiles.insert(Match3Tile(kind: Self.randomKind(avoiding: forbidden)), at: 0)
+            }
+
+            for row in 0..<removedCount {
+                drops.append(TileDrop(column: column, fromRow: row - removedCount, toRow: row))
+            }
+
+            for row in 0..<size {
+                tiles[row][column] = remainingTiles[row]
+            }
+        }
+
+        return drops
+    }
+
     private mutating func resolve(matches: Set<GridPosition>) -> MoveResult {
         var currentMatches = matches
         var removedByKind: [TileKind: Int] = [:]
@@ -745,6 +859,12 @@ private struct Match3Board {
 private struct MoveResult {
     let totalRemoved: Int
     let removedByKind: [TileKind: Int]
+}
+
+private struct TileDrop {
+    let column: Int
+    let fromRow: Int
+    let toRow: Int
 }
 
 private struct ProgressStore {
