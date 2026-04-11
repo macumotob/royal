@@ -585,10 +585,19 @@ private extension ViewController {
         if goalReached {
             isLevelFinished = true
             progressStore.unlockLevel(afterCompleting: currentLevelIndex, totalLevels: levels.count)
-            showCompletionAlert(
-                title: "Победа",
-                message: "Уровень \(currentLevel.number) пройден! Очки: \(score)."
-            )
+
+            if currentLevelIndex + 1 < levels.count {
+                updateStatus("Уровень \(currentLevel.number) пройден! Очки: \(score).")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                    guard let self else { return }
+                    self.startLevel(index: self.currentLevelIndex + 1)
+                }
+            } else {
+                showCompletionAlert(
+                    title: "Победа",
+                    message: "Все уровни пройдены! Финальный счёт: \(score)."
+                )
+            }
             return
         }
 
