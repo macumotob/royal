@@ -9,6 +9,7 @@ import UIKit
 
 final class ViewController: UIViewController {
     private let boardSize = 6
+    private let levelGoal = LevelGoal(targetKind: .crown, targetCount: 12, moveLimit: 14)
 
     private let titleLabel: UILabel = {
         let label = UILabel()
@@ -35,6 +36,16 @@ final class ViewController: UIViewController {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = .systemFont(ofSize: 15, weight: .semibold)
+        label.textColor = .white
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        return label
+    }()
+
+    private let progressLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = .systemFont(ofSize: 15, weight: .bold)
         label.textColor = .white
         label.textAlignment = .center
         label.numberOfLines = 0
@@ -90,6 +101,9 @@ final class ViewController: UIViewController {
     private var board = Match3Board(size: 6)
     private var selectedPosition: GridPosition?
     private var movesCount = 0
+    private var score = 0
+    private var collectedGoalTiles = 0
+    private var isLevelFinished = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -117,6 +131,7 @@ private extension ViewController {
         let contentStack = UIStackView(arrangedSubviews: [
             titleLabel,
             subtitleLabel,
+            progressLabel,
             statusLabel,
             boardContainerView,
             buttonStack
@@ -198,10 +213,17 @@ private extension ViewController {
     }
 
     func updateStatus(_ text: String) {
-        statusLabel.text = "Ходы: \(movesCount)\n\(text)"
+        let remainingMoves = max(levelGoal.moveLimit - movesCount, 0)
+        progressLabel.text = "Цель: собрать \(levelGoal.targetCount) \(levelGoal.targetKind.symbol)  |  Собрано: \(collectedGoalTiles)"
+        statusLabel.text = "Очки: \(score)  |  Ходы: \(remainingMoves)\n\(text)"
     }
 
     func handleSelection(at position: GridPosition) {
+        guard !isLevelFinished else {
+            updateStatus("Уровень завершен. Перемешайте поле для новой попытки.")
+            return
+        }
+
         guard let currentSelection = selectedPosition else {
             selectedPosition = position
             renderBoard()
@@ -224,14 +246,18 @@ private extension ViewController {
         }
 
         selectedPosition = nil
-        movesCount += 1
 
-        if board.performMove(from: currentSelection, to: position) {
+        if let result = board.performMove(from: currentSelection, to: position) {
+            movesCount += 1
+            score += result.totalRemoved * 10
+            collectedGoalTiles += result.removedByKind[levelGoal.targetKind, default: 0]
             renderBoard()
-            updateStatus("Совпадение найдено. Поле обновлено.")
+            updateStatus("Совпадение найдено. Удалено фишек: \(result.totalRemoved).")
+            evaluateLevelState()
         } else {
             renderBoard()
             updateStatus("Совпадения нет. Обмен отменен.")
+            evaluateLevelState()
         }
     }
 
@@ -246,8 +272,11 @@ private extension ViewController {
         board = Match3Board(size: boardSize)
         selectedPosition = nil
         movesCount = 0
+        score = 0
+        collectedGoalTiles = 0
+        isLevelFinished = false
         renderBoard()
-        updateStatus("Поле перемешано. Ищите первую комбинацию.")
+        updateStatus("Поле перемешано. Соберите короны до конца ходов.")
     }
 
     @objc
@@ -260,6 +289,33 @@ private extension ViewController {
         """
         let alert = UIAlertController(title: "План прототипа", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    func evaluateLevelState() {
+        if collectedGoalTiles >= levelGoal.targetCount {
+            isLevelFinished = true
+            showCompletionAlert(
+                title: "Победа",
+                message: "Цель выполнена. Вы собрали \(collectedGoalTiles) \(levelGoal.targetKind.symbol) и набрали \(score) очков."
+            )
+            return
+        }
+
+        if movesCount >= levelGoal.moveLimit {
+            isLevelFinished = true
+            showCompletionAlert(
+                title: "Ходы закончились",
+                message: "Цель не выполнена. Собрано \(collectedGoalTiles) из \(levelGoal.targetCount), очки: \(score)."
+            )
+        }
+    }
+
+    func showCompletionAlert(title: String, message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Новый запуск", style: .default) { [weak self] _ in
+            self?.didTapShuffle()
+        })
         present(alert, animated: true)
     }
 }
@@ -275,6 +331,12 @@ private struct GridPosition: Hashable {
 
 private struct Match3Tile {
     let kind: TileKind
+}
+
+private struct LevelGoal {
+    let targetKind: TileKind
+    let targetCount: Int
+    let moveLimit: Int
 }
 
 private enum TileKind: CaseIterable {
@@ -333,26 +395,34 @@ private struct Match3Board {
         }
     }
 
-    mutating func performMove(from source: GridPosition, to target: GridPosition) -> Bool {
+    mutating func performMove(from source: GridPosition, to target: GridPosition) -> MoveResult? {
         swapTiles(at: source, and: target)
 
         let matches = allMatches()
         guard !matches.isEmpty else {
             swapTiles(at: source, and: target)
-            return false
+            return nil
         }
 
-        resolve(matches: matches)
-        return true
+        return resolve(matches: matches)
     }
 
-    private mutating func resolve(matches: Set<GridPosition>) {
+    private mutating func resolve(matches: Set<GridPosition>) -> MoveResult {
         var currentMatches = matches
+        var removedByKind: [TileKind: Int] = [:]
+        var totalRemoved = 0
 
         while !currentMatches.isEmpty {
+            for position in currentMatches {
+                let kind = tiles[position.row][position.column].kind
+                removedByKind[kind, default: 0] += 1
+                totalRemoved += 1
+            }
             refill(matchedPositions: currentMatches)
             currentMatches = allMatches()
         }
+
+        return MoveResult(totalRemoved: totalRemoved, removedByKind: removedByKind)
     }
 
     private mutating func refill(matchedPositions: Set<GridPosition>) {
@@ -471,4 +541,9 @@ private struct Match3Board {
         let availableKinds = TileKind.allCases.filter { !forbiddenKinds.contains($0) }
         return availableKinds.randomElement() ?? TileKind.allCases[0]
     }
+}
+
+private struct MoveResult {
+    let totalRemoved: Int
+    let removedByKind: [TileKind: Int]
 }
