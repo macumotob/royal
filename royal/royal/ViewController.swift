@@ -25,7 +25,6 @@ final class ViewController: UIViewController {
     private let subtitleLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Прототип match-3: выберите 2 соседние фишки для обмена."
         label.font = .systemFont(ofSize: 16, weight: .medium)
         label.textColor = .white.withAlphaComponent(0.84)
         label.textAlignment = .center
@@ -33,7 +32,15 @@ final class ViewController: UIViewController {
         return label
     }()
 
-    private let statusLabel: UILabel = {
+    private let mapContainerView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = UIColor.white.withAlphaComponent(0.12)
+        view.layer.cornerRadius = 24
+        return view
+    }()
+
+    private let mapProgressLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = .systemFont(ofSize: 15, weight: .semibold)
@@ -43,10 +50,50 @@ final class ViewController: UIViewController {
         return label
     }()
 
+    private let levelButtonsStackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.axis = .vertical
+        stackView.spacing = 12
+        stackView.alignment = .fill
+        return stackView
+    }()
+
+    private let aboutButton: UIButton = {
+        var configuration = UIButton.Configuration.tinted()
+        configuration.title = "О прототипе"
+        configuration.baseBackgroundColor = .white.withAlphaComponent(0.16)
+        configuration.baseForegroundColor = .white
+        configuration.cornerStyle = .large
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 20, bottom: 14, trailing: 20)
+
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.configuration = configuration
+        return button
+    }()
+
+    private let gameContainerView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = .clear
+        return view
+    }()
+
     private let progressLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = .systemFont(ofSize: 15, weight: .bold)
+        label.textColor = .white
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        return label
+    }()
+
+    private let statusLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = .systemFont(ofSize: 15, weight: .semibold)
         label.textColor = .white
         label.textAlignment = .center
         label.numberOfLines = 0
@@ -72,7 +119,7 @@ final class ViewController: UIViewController {
 
     private let shuffleButton: UIButton = {
         var configuration = UIButton.Configuration.filled()
-        configuration.title = "Перемешать поле"
+        configuration.title = "Переиграть уровень"
         configuration.baseBackgroundColor = .white
         configuration.baseForegroundColor = UIColor(red: 0.12, green: 0.21, blue: 0.52, alpha: 1.0)
         configuration.cornerStyle = .large
@@ -84,9 +131,9 @@ final class ViewController: UIViewController {
         return button
     }()
 
-    private let roadmapButton: UIButton = {
+    private let mapButton: UIButton = {
         var configuration = UIButton.Configuration.tinted()
-        configuration.title = "Следующий этап"
+        configuration.title = "К карте уровней"
         configuration.baseBackgroundColor = .white.withAlphaComponent(0.16)
         configuration.baseForegroundColor = .white
         configuration.cornerStyle = .large
@@ -107,6 +154,7 @@ final class ViewController: UIViewController {
     private var isLevelFinished = false
     private var isResolvingMove = false
     private var currentLevelIndex = 0
+    private var levelButtons: [UIButton] = []
 
     private var currentLevel: LevelConfiguration {
         levels[currentLevelIndex]
@@ -118,8 +166,9 @@ final class ViewController: UIViewController {
         configureView()
         layoutInterface()
         buildBoardGrid()
+        buildLevelButtons()
         wireActions()
-        startLevel(index: currentLevelIndex, resetProgress: true)
+        showMapScreen()
     }
 }
 
@@ -129,25 +178,32 @@ private extension ViewController {
     }
 
     func layoutInterface() {
-        let buttonStack = UIStackView(arrangedSubviews: [shuffleButton, roadmapButton])
-        buttonStack.translatesAutoresizingMaskIntoConstraints = false
-        buttonStack.axis = .vertical
-        buttonStack.spacing = 14
-        buttonStack.alignment = .fill
+        let mapStack = UIStackView(arrangedSubviews: [mapProgressLabel, levelButtonsStackView, aboutButton])
+        mapStack.translatesAutoresizingMaskIntoConstraints = false
+        mapStack.axis = .vertical
+        mapStack.spacing = 16
 
-        let contentStack = UIStackView(arrangedSubviews: [
-            titleLabel,
-            subtitleLabel,
-            progressLabel,
-            statusLabel,
-            boardContainerView,
-            buttonStack
-        ])
+        mapContainerView.addSubview(mapStack)
+
+        let gameButtonsStack = UIStackView(arrangedSubviews: [shuffleButton, mapButton])
+        gameButtonsStack.translatesAutoresizingMaskIntoConstraints = false
+        gameButtonsStack.axis = .vertical
+        gameButtonsStack.spacing = 14
+
+        boardContainerView.addSubview(boardStackView)
+
+        let gameStack = UIStackView(arrangedSubviews: [progressLabel, statusLabel, boardContainerView, gameButtonsStack])
+        gameStack.translatesAutoresizingMaskIntoConstraints = false
+        gameStack.axis = .vertical
+        gameStack.spacing = 18
+
+        gameContainerView.addSubview(gameStack)
+
+        let contentStack = UIStackView(arrangedSubviews: [titleLabel, subtitleLabel, mapContainerView, gameContainerView])
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         contentStack.axis = .vertical
         contentStack.spacing = 18
 
-        boardContainerView.addSubview(boardStackView)
         view.addSubview(contentStack)
 
         NSLayoutConstraint.activate([
@@ -155,6 +211,16 @@ private extension ViewController {
             contentStack.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             contentStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             contentStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+
+            mapStack.topAnchor.constraint(equalTo: mapContainerView.topAnchor, constant: 20),
+            mapStack.leadingAnchor.constraint(equalTo: mapContainerView.leadingAnchor, constant: 20),
+            mapStack.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor, constant: -20),
+            mapStack.bottomAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: -20),
+
+            gameStack.topAnchor.constraint(equalTo: gameContainerView.topAnchor),
+            gameStack.leadingAnchor.constraint(equalTo: gameContainerView.leadingAnchor),
+            gameStack.trailingAnchor.constraint(equalTo: gameContainerView.trailingAnchor),
+            gameStack.bottomAnchor.constraint(equalTo: gameContainerView.bottomAnchor),
 
             boardContainerView.heightAnchor.constraint(equalTo: boardContainerView.widthAnchor),
 
@@ -167,9 +233,9 @@ private extension ViewController {
 
     func buildBoardGrid() {
         tileButtons.removeAll()
-        boardStackView.arrangedSubviews.forEach { row in
-            boardStackView.removeArrangedSubview(row)
-            row.removeFromSuperview()
+        boardStackView.arrangedSubviews.forEach { rowView in
+            boardStackView.removeArrangedSubview(rowView)
+            rowView.removeFromSuperview()
         }
 
         for row in 0..<boardSize {
@@ -185,7 +251,6 @@ private extension ViewController {
                 button.translatesAutoresizingMaskIntoConstraints = false
                 button.tag = row * boardSize + column
                 button.layer.cornerRadius = 14
-                button.layer.borderWidth = 0
                 button.setTitleColor(.white, for: .normal)
                 button.titleLabel?.font = .systemFont(ofSize: 28, weight: .bold)
                 button.addTarget(self, action: #selector(didTapTile(_:)), for: .touchUpInside)
@@ -198,9 +263,62 @@ private extension ViewController {
         }
     }
 
+    func buildLevelButtons() {
+        levelButtonsStackView.arrangedSubviews.forEach { levelView in
+            levelButtonsStackView.removeArrangedSubview(levelView)
+            levelView.removeFromSuperview()
+        }
+        levelButtons.removeAll()
+
+        for level in levels {
+            let button = UIButton(type: .system)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.tag = level.number - 1
+            button.addTarget(self, action: #selector(didTapLevelButton(_:)), for: .touchUpInside)
+            button.heightAnchor.constraint(greaterThanOrEqualToConstant: 54).isActive = true
+            levelButtonsStackView.addArrangedSubview(button)
+            levelButtons.append(button)
+        }
+    }
+
     func wireActions() {
+        aboutButton.addTarget(self, action: #selector(didTapAbout), for: .touchUpInside)
         shuffleButton.addTarget(self, action: #selector(didTapShuffle), for: .touchUpInside)
-        roadmapButton.addTarget(self, action: #selector(didTapRoadmap), for: .touchUpInside)
+        mapButton.addTarget(self, action: #selector(didTapMap), for: .touchUpInside)
+    }
+
+    func showMapScreen() {
+        mapContainerView.isHidden = false
+        gameContainerView.isHidden = true
+        subtitleLabel.text = "Выберите открытый уровень и начните прохождение."
+
+        let unlockedCount = progressStore.unlockedLevelCount(totalLevels: levels.count)
+        mapProgressLabel.text = "Открыто уровней: \(unlockedCount) из \(levels.count)"
+
+        for (index, button) in levelButtons.enumerated() {
+            let level = levels[index]
+            let unlocked = index < unlockedCount
+
+            var configuration = UIButton.Configuration.filled()
+            configuration.cornerStyle = .large
+            configuration.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 18, bottom: 14, trailing: 18)
+            configuration.baseBackgroundColor = unlocked ? .white : UIColor.white.withAlphaComponent(0.12)
+            configuration.baseForegroundColor = unlocked ? UIColor(red: 0.12, green: 0.21, blue: 0.52, alpha: 1.0) : .white.withAlphaComponent(0.7)
+            configuration.title = unlocked
+                ? "Уровень \(level.number) • \(level.title)"
+                : "Уровень \(level.number) • Закрыт"
+            configuration.subtitle = unlocked
+                ? "Цель: \(level.goal.targetCount) \(level.goal.targetKind.symbol), ходов: \(level.goal.moveLimit)"
+                : "Пройдите предыдущий уровень"
+            button.configuration = configuration
+            button.isEnabled = unlocked
+        }
+    }
+
+    func showGameScreen() {
+        mapContainerView.isHidden = true
+        gameContainerView.isHidden = false
+        updateStatus(currentLevel.startMessage)
     }
 
     func renderBoard() {
@@ -226,13 +344,21 @@ private extension ViewController {
         statusLabel.text = "Очки: \(score)  |  Ходы: \(remainingMoves)\n\(text)"
     }
 
-    func handleSelection(at position: GridPosition) {
-        guard !isResolvingMove else {
-            return
-        }
+    func startLevel(index: Int) {
+        currentLevelIndex = max(0, min(index, levels.count - 1))
+        board = Match3Board(size: boardSize)
+        selectedPosition = nil
+        movesCount = 0
+        score = 0
+        collectedGoalTiles = 0
+        isLevelFinished = false
+        isResolvingMove = false
+        renderBoard()
+        showGameScreen()
+    }
 
-        guard !isLevelFinished else {
-            updateStatus("Уровень завершен. Перемешайте поле для новой попытки.")
+    func handleSelection(at position: GridPosition) {
+        guard !isResolvingMove, !isLevelFinished else {
             return
         }
 
@@ -258,7 +384,6 @@ private extension ViewController {
         }
 
         selectedPosition = nil
-
         board.swapTiles(at: currentSelection, and: position)
         renderBoard()
 
@@ -291,33 +416,6 @@ private extension ViewController {
         }
     }
 
-    @objc
-    func didTapTile(_ sender: UIButton) {
-        let position = GridPosition(row: sender.tag / boardSize, column: sender.tag % boardSize)
-        handleSelection(at: position)
-    }
-
-    @objc
-    func didTapShuffle() {
-        startLevel(index: currentLevelIndex, resetProgress: true)
-    }
-
-    @objc
-    func didTapRoadmap() {
-        let message = """
-        Открыто уровней: \(progressStore.unlockedLevelCount(totalLevels: levels.count)) из \(levels.count)
-        Текущий уровень: \(currentLevel.number)
-
-        Следующий шаг:
-        1. Карта уровней
-        2. Бустеры и спец-фишки
-        3. Оформление замка
-        """
-        let alert = UIAlertController(title: "План прототипа", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
-
     func evaluateLevelState() {
         if collectedGoalTiles >= currentLevel.goal.targetCount {
             isLevelFinished = true
@@ -340,31 +438,60 @@ private extension ViewController {
 
     func showCompletionAlert(title: String, message: String) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+
         if title == "Победа", currentLevelIndex + 1 < levels.count {
             alert.addAction(UIAlertAction(title: "Следующий уровень", style: .default) { [weak self] _ in
                 guard let self else { return }
-                self.startLevel(index: self.currentLevelIndex + 1, resetProgress: true)
+                self.startLevel(index: self.currentLevelIndex + 1)
             })
         }
+
+        alert.addAction(UIAlertAction(title: "К карте", style: .default) { [weak self] _ in
+            self?.showMapScreen()
+        })
+
         alert.addAction(UIAlertAction(title: "Переиграть", style: .default) { [weak self] _ in
             self?.didTapShuffle()
         })
+
         present(alert, animated: true)
     }
 
-    func startLevel(index: Int, resetProgress: Bool) {
-        currentLevelIndex = max(0, min(index, levels.count - 1))
-        board = Match3Board(size: boardSize)
-        selectedPosition = nil
-        movesCount = 0
-        score = 0
-        collectedGoalTiles = 0
-        isLevelFinished = false
-        isResolvingMove = false
-        renderBoard()
-        if resetProgress {
-            updateStatus(currentLevel.startMessage)
-        }
+    @objc
+    func didTapTile(_ sender: UIButton) {
+        let position = GridPosition(row: sender.tag / boardSize, column: sender.tag % boardSize)
+        handleSelection(at: position)
+    }
+
+    @objc
+    func didTapShuffle() {
+        startLevel(index: currentLevelIndex)
+    }
+
+    @objc
+    func didTapMap() {
+        showMapScreen()
+    }
+
+    @objc
+    func didTapAbout() {
+        let unlockedCount = progressStore.unlockedLevelCount(totalLevels: levels.count)
+        let message = """
+        Открыто уровней: \(unlockedCount) из \(levels.count)
+
+        Ближайшие шаги:
+        1. Отдельная карта с путём между уровнями
+        2. Спец-фишки и бустеры
+        3. Экран замка и оформление
+        """
+        let alert = UIAlertController(title: "О прототипе", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    @objc
+    func didTapLevelButton(_ sender: UIButton) {
+        startLevel(index: sender.tag)
     }
 }
 
