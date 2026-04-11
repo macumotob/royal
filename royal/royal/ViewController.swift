@@ -54,8 +54,8 @@ final class ViewController: UIViewController {
         let stackView = UIStackView()
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.axis = .vertical
-        stackView.spacing = 12
-        stackView.alignment = .fill
+        stackView.spacing = 10
+        stackView.alignment = .center
         return stackView
     }()
 
@@ -155,6 +155,7 @@ final class ViewController: UIViewController {
     private var isResolvingMove = false
     private var currentLevelIndex = 0
     private var levelButtons: [UIButton] = []
+    private let levelsPerRow = 5
 
     private var currentLevel: LevelConfiguration {
         levels[currentLevelIndex]
@@ -178,13 +179,16 @@ private extension ViewController {
     }
 
     func layoutInterface() {
-        let mapStack = UIStackView(arrangedSubviews: [mapProgressLabel, levelButtonsStackView, aboutButton])
-        mapStack.translatesAutoresizingMaskIntoConstraints = false
-        mapStack.axis = .vertical
-        mapStack.spacing = 16
+        // Map screen: progress label + grid of level icons + about button inside container
+        let mapInnerStack = UIStackView(arrangedSubviews: [mapProgressLabel, levelButtonsStackView, aboutButton])
+        mapInnerStack.translatesAutoresizingMaskIntoConstraints = false
+        mapInnerStack.axis = .vertical
+        mapInnerStack.spacing = 16
+        mapInnerStack.alignment = .center
 
-        mapContainerView.addSubview(mapStack)
+        mapContainerView.addSubview(mapInnerStack)
 
+        // Game screen
         let gameButtonsStack = UIStackView(arrangedSubviews: [shuffleButton, mapButton])
         gameButtonsStack.translatesAutoresizingMaskIntoConstraints = false
         gameButtonsStack.axis = .vertical
@@ -199,23 +203,40 @@ private extension ViewController {
 
         gameContainerView.addSubview(gameStack)
 
+        // Main scroll view wrapping everything
         let contentStack = UIStackView(arrangedSubviews: [titleLabel, subtitleLabel, mapContainerView, gameContainerView])
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         contentStack.axis = .vertical
         contentStack.spacing = 18
 
-        view.addSubview(contentStack)
+        let mainScrollView = UIScrollView()
+        mainScrollView.translatesAutoresizingMaskIntoConstraints = false
+        mainScrollView.showsVerticalScrollIndicator = false
+        mainScrollView.alwaysBounceVertical = true
+        mainScrollView.addSubview(contentStack)
+        view.addSubview(mainScrollView)
 
         NSLayoutConstraint.activate([
-            contentStack.topAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
-            contentStack.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            contentStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            contentStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            mainScrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            mainScrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            mainScrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            mainScrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
-            mapStack.topAnchor.constraint(equalTo: mapContainerView.topAnchor, constant: 20),
-            mapStack.leadingAnchor.constraint(equalTo: mapContainerView.leadingAnchor, constant: 20),
-            mapStack.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor, constant: -20),
-            mapStack.bottomAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: -20),
+            contentStack.topAnchor.constraint(equalTo: mainScrollView.contentLayoutGuide.topAnchor, constant: 20),
+            contentStack.leadingAnchor.constraint(equalTo: mainScrollView.frameLayoutGuide.leadingAnchor, constant: 20),
+            contentStack.trailingAnchor.constraint(equalTo: mainScrollView.frameLayoutGuide.trailingAnchor, constant: -20),
+            contentStack.bottomAnchor.constraint(equalTo: mainScrollView.contentLayoutGuide.bottomAnchor, constant: -20),
+
+            mapInnerStack.topAnchor.constraint(equalTo: mapContainerView.topAnchor, constant: 20),
+            mapInnerStack.leadingAnchor.constraint(equalTo: mapContainerView.leadingAnchor, constant: 20),
+            mapInnerStack.trailingAnchor.constraint(equalTo: mapContainerView.trailingAnchor, constant: -20),
+            mapInnerStack.bottomAnchor.constraint(equalTo: mapContainerView.bottomAnchor, constant: -20),
+
+            mapProgressLabel.leadingAnchor.constraint(equalTo: mapInnerStack.leadingAnchor),
+            mapProgressLabel.trailingAnchor.constraint(equalTo: mapInnerStack.trailingAnchor),
+
+            aboutButton.leadingAnchor.constraint(equalTo: mapInnerStack.leadingAnchor),
+            aboutButton.trailingAnchor.constraint(equalTo: mapInnerStack.trailingAnchor),
 
             gameStack.topAnchor.constraint(equalTo: gameContainerView.topAnchor),
             gameStack.leadingAnchor.constraint(equalTo: gameContainerView.leadingAnchor),
@@ -264,20 +285,47 @@ private extension ViewController {
     }
 
     func buildLevelButtons() {
-        levelButtonsStackView.arrangedSubviews.forEach { levelView in
-            levelButtonsStackView.removeArrangedSubview(levelView)
-            levelView.removeFromSuperview()
+        levelButtonsStackView.arrangedSubviews.forEach { view in
+            levelButtonsStackView.removeArrangedSubview(view)
+            view.removeFromSuperview()
         }
         levelButtons.removeAll()
 
-        for level in levels {
+        var currentRow: UIStackView?
+        for (index, level) in levels.enumerated() {
+            if index % levelsPerRow == 0 {
+                let row = UIStackView()
+                row.axis = .horizontal
+                row.spacing = 10
+                row.distribution = .fillEqually
+                levelButtonsStackView.addArrangedSubview(row)
+                currentRow = row
+            }
+
             let button = UIButton(type: .system)
             button.translatesAutoresizingMaskIntoConstraints = false
             button.tag = level.number - 1
+            button.layer.cornerRadius = 16
+            button.clipsToBounds = true
+            button.titleLabel?.font = .systemFont(ofSize: 18, weight: .bold)
             button.addTarget(self, action: #selector(didTapLevelButton(_:)), for: .touchUpInside)
-            button.heightAnchor.constraint(greaterThanOrEqualToConstant: 54).isActive = true
-            levelButtonsStackView.addArrangedSubview(button)
+
+            let size: CGFloat = 52
+            button.widthAnchor.constraint(equalToConstant: size).isActive = true
+            button.heightAnchor.constraint(equalToConstant: size).isActive = true
+
+            currentRow?.addArrangedSubview(button)
             levelButtons.append(button)
+        }
+
+        let lastRowCount = levels.count % levelsPerRow
+        if lastRowCount > 0, let lastRow = currentRow {
+            for _ in 0..<(levelsPerRow - lastRowCount) {
+                let spacer = UIView()
+                spacer.translatesAutoresizingMaskIntoConstraints = false
+                spacer.widthAnchor.constraint(equalToConstant: 52).isActive = true
+                lastRow.addArrangedSubview(spacer)
+            }
         }
     }
 
@@ -296,21 +344,22 @@ private extension ViewController {
         mapProgressLabel.text = "Открыто уровней: \(unlockedCount) из \(levels.count)"
 
         for (index, button) in levelButtons.enumerated() {
-            let level = levels[index]
             let unlocked = index < unlockedCount
 
-            var configuration = UIButton.Configuration.filled()
-            configuration.cornerStyle = .large
-            configuration.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 18, bottom: 14, trailing: 18)
-            configuration.baseBackgroundColor = unlocked ? .white : UIColor.white.withAlphaComponent(0.12)
-            configuration.baseForegroundColor = unlocked ? UIColor(red: 0.12, green: 0.21, blue: 0.52, alpha: 1.0) : .white.withAlphaComponent(0.7)
-            configuration.title = unlocked
-                ? "Уровень \(level.number) • \(level.title)"
-                : "Уровень \(level.number) • Закрыт"
-            configuration.subtitle = unlocked
-                ? "Цель: \(level.goal.targetCount) \(level.goal.targetKind.symbol), ходов: \(level.goal.moveLimit)"
-                : "Пройдите предыдущий уровень"
-            button.configuration = configuration
+            if unlocked {
+                button.setTitle("\(index + 1)", for: .normal)
+                button.setTitleColor(UIColor(red: 0.12, green: 0.21, blue: 0.52, alpha: 1.0), for: .normal)
+                button.backgroundColor = .white
+                button.layer.borderWidth = 0
+            } else {
+                button.setTitle("🔒", for: .normal)
+                button.setTitleColor(.white.withAlphaComponent(0.5), for: .normal)
+                button.backgroundColor = UIColor.white.withAlphaComponent(0.08)
+                button.layer.borderWidth = 1
+                button.layer.borderColor = UIColor.white.withAlphaComponent(0.2).cgColor
+            }
+
+            button.configuration = nil
             button.isEnabled = unlocked
         }
     }
@@ -326,13 +375,25 @@ private extension ViewController {
             for column in 0..<boardSize {
                 let tile = board.tiles[row][column]
                 let button = tileButtons[row][column]
-                button.setTitle(tile.kind.symbol, for: .normal)
+
+                switch tile.powerUp {
+                case .none:
+                    button.setTitle(tile.kind.symbol, for: .normal)
+                case .rocketHorizontal:
+                    button.setTitle("➡️", for: .normal)
+                case .rocketVertical:
+                    button.setTitle("⬆️", for: .normal)
+                case .bomb:
+                    button.setTitle("💣", for: .normal)
+                }
+
                 button.backgroundColor = tile.kind.color
                 button.transform = .identity
 
                 let isSelected = selectedPosition == GridPosition(row: row, column: column)
-                button.layer.borderWidth = isSelected ? 3 : 0
-                button.layer.borderColor = UIColor.white.cgColor
+                let hasPowerUp = tile.powerUp != .none
+                button.layer.borderWidth = isSelected ? 3 : (hasPowerUp ? 2 : 0)
+                button.layer.borderColor = isSelected ? UIColor.white.cgColor : UIColor.yellow.cgColor
                 button.alpha = isSelected ? 0.82 : 1.0
             }
         }
@@ -341,7 +402,14 @@ private extension ViewController {
     func updateStatus(_ text: String) {
         let remainingMoves = max(currentLevel.goal.moveLimit - movesCount, 0)
         subtitleLabel.text = "Уровень \(currentLevel.number): \(currentLevel.title)"
-        progressLabel.text = "Цель: собрать \(currentLevel.goal.targetCount) \(currentLevel.goal.targetKind.symbol)  |  Собрано: \(collectedGoalTiles)"
+
+        switch currentLevel.goal.type {
+        case .collect(let kind, let count):
+            progressLabel.text = "Цель: собрать \(count) \(kind.symbol)  |  Собрано: \(collectedGoalTiles)"
+        case .reachScore(let target):
+            progressLabel.text = "Цель: набрать \(target) очков  |  Набрано: \(score)"
+        }
+
         statusLabel.text = "Очки: \(score)  |  Ходы: \(remainingMoves)\n\(text)"
     }
 
@@ -411,7 +479,12 @@ private extension ViewController {
         let matched = board.currentMatches()
         guard !matched.isEmpty else {
             score += totalRemoved * 10
-            collectedGoalTiles += removedByKind[currentLevel.goal.targetKind, default: 0]
+            switch currentLevel.goal.type {
+            case .collect(let kind, _):
+                collectedGoalTiles += removedByKind[kind, default: 0]
+            case .reachScore:
+                break
+            }
             isResolvingMove = false
             renderBoard()
             updateStatus("Совпадение найдено. Удалено фишек: \(totalRemoved).")
@@ -419,15 +492,28 @@ private extension ViewController {
             return
         }
 
+        let runs = board.allMatchRuns()
+        let spawns = board.determinePowerUpSpawns(runs: runs, matched: matched)
+        let expanded = board.expandWithPowerUps(matched)
+
+        var removalSet = expanded
+        let spawnPositionSet = Set(spawns.map { $0.position })
+        removalSet.subtract(spawnPositionSet)
+
         var updatedByKind = removedByKind
-        for pos in matched {
+        for pos in removalSet {
             updatedByKind[board.tiles[pos.row][pos.column].kind, default: 0] += 1
         }
-        let updatedTotal = totalRemoved + matched.count
+        let updatedTotal = totalRemoved + removalSet.count
 
-        animateRemoval(at: matched) { [weak self] in
+        animateRemoval(at: removalSet) { [weak self] in
             guard let self else { return }
-            let drops = self.board.refillAfterRemoval(matched)
+
+            for spawn in spawns {
+                self.board.tiles[spawn.position.row][spawn.position.column].powerUp = spawn.powerUp
+            }
+
+            let drops = self.board.refillAfterRemoval(removalSet)
             self.renderBoard()
             self.prepareDropTransforms(drops)
 
@@ -488,21 +574,36 @@ private extension ViewController {
     }
 
     func evaluateLevelState() {
-        if collectedGoalTiles >= currentLevel.goal.targetCount {
+        let goalReached: Bool
+        switch currentLevel.goal.type {
+        case .collect(_, let count):
+            goalReached = collectedGoalTiles >= count
+        case .reachScore(let target):
+            goalReached = score >= target
+        }
+
+        if goalReached {
             isLevelFinished = true
             progressStore.unlockLevel(afterCompleting: currentLevelIndex, totalLevels: levels.count)
             showCompletionAlert(
                 title: "Победа",
-                message: "Уровень \(currentLevel.number) пройден. Вы собрали \(collectedGoalTiles) \(currentLevel.goal.targetKind.symbol) и набрали \(score) очков."
+                message: "Уровень \(currentLevel.number) пройден! Очки: \(score)."
             )
             return
         }
 
         if movesCount >= currentLevel.goal.moveLimit {
             isLevelFinished = true
+            let details: String
+            switch currentLevel.goal.type {
+            case .collect(let kind, let count):
+                details = "Собрано \(collectedGoalTiles) из \(count) \(kind.symbol), очки: \(score)."
+            case .reachScore(let target):
+                details = "Набрано \(score) из \(target) очков."
+            }
             showCompletionAlert(
                 title: "Ходы закончились",
-                message: "Уровень \(currentLevel.number) не пройден. Собрано \(collectedGoalTiles) из \(currentLevel.goal.targetCount), очки: \(score)."
+                message: "Уровень \(currentLevel.number) не пройден. \(details)"
             )
         }
     }
@@ -552,7 +653,7 @@ private extension ViewController {
 
         Ближайшие шаги:
         1. Отдельная карта с путём между уровнями
-        2. Спец-фишки и бустеры
+        2. Звуковые эффекты
         3. Экран замка и оформление
         """
         let alert = UIAlertController(title: "О прототипе", message: message, preferredStyle: .alert)
@@ -577,12 +678,48 @@ private struct GridPosition: Hashable {
 
 private struct Match3Tile {
     let kind: TileKind
+    var powerUp: PowerUp = .none
+}
+
+private enum PowerUp {
+    case none
+    case rocketHorizontal
+    case rocketVertical
+    case bomb
+}
+
+private enum RunDirection {
+    case horizontal
+    case vertical
+}
+
+private struct MatchRun {
+    let positions: [GridPosition]
+    let direction: RunDirection
+}
+
+private struct PowerUpSpawn {
+    let position: GridPosition
+    let powerUp: PowerUp
 }
 
 private struct LevelGoal {
-    let targetKind: TileKind
-    let targetCount: Int
+    let type: GoalType
     let moveLimit: Int
+}
+
+private enum GoalType {
+    case collect(kind: TileKind, count: Int)
+    case reachScore(target: Int)
+
+    var description: String {
+        switch self {
+        case .collect(let kind, let count):
+            return "собрать \(count) \(kind.symbol)"
+        case .reachScore(let target):
+            return "набрать \(target) очков"
+        }
+    }
 }
 
 private struct LevelConfiguration {
@@ -595,20 +732,92 @@ private struct LevelConfiguration {
         LevelConfiguration(
             number: 1,
             title: "Королевский двор",
-            goal: LevelGoal(targetKind: .crown, targetCount: 12, moveLimit: 14),
-            startMessage: "Соберите короны до конца ходов."
+            goal: LevelGoal(type: .collect(kind: .crown, count: 10), moveLimit: 16),
+            startMessage: "Соберите короны. Лёгкое начало!"
         ),
         LevelConfiguration(
             number: 2,
             title: "Рубиновая галерея",
-            goal: LevelGoal(targetKind: .ruby, targetCount: 14, moveLimit: 13),
-            startMessage: "Теперь цель уровня - собрать рубины."
+            goal: LevelGoal(type: .collect(kind: .ruby, count: 12), moveLimit: 14),
+            startMessage: "Теперь цель - рубины. Старайтесь собирать 4+!"
         ),
         LevelConfiguration(
             number: 3,
             title: "Зал щитов",
-            goal: LevelGoal(targetKind: .shield, targetCount: 15, moveLimit: 12),
-            startMessage: "Щиты сложнее. Ходов меньше, думайте на 2 шага вперед."
+            goal: LevelGoal(type: .collect(kind: .shield, count: 14), moveLimit: 13),
+            startMessage: "Щиты встречаются реже. Планируйте ходы."
+        ),
+        LevelConfiguration(
+            number: 4,
+            title: "Звёздный балкон",
+            goal: LevelGoal(type: .collect(kind: .star, count: 14), moveLimit: 13),
+            startMessage: "Звёзды добавляют азарта. Используйте спец-фишки!"
+        ),
+        LevelConfiguration(
+            number: 5,
+            title: "Клеверное поле",
+            goal: LevelGoal(type: .collect(kind: .leaf, count: 15), moveLimit: 12),
+            startMessage: "Удача на вашей стороне? Соберите клевер."
+        ),
+        LevelConfiguration(
+            number: 6,
+            title: "Зал побед",
+            goal: LevelGoal(type: .reachScore(target: 500), moveLimit: 12),
+            startMessage: "Новая цель! Наберите 500 очков за 12 ходов."
+        ),
+        LevelConfiguration(
+            number: 7,
+            title: "Корона и рубин",
+            goal: LevelGoal(type: .collect(kind: .crown, count: 18), moveLimit: 13),
+            startMessage: "Корон нужно много. Создавайте ракеты и бомбы!"
+        ),
+        LevelConfiguration(
+            number: 8,
+            title: "Рубиновая шахта",
+            goal: LevelGoal(type: .collect(kind: .ruby, count: 20), moveLimit: 14),
+            startMessage: "Глубоко в шахте прячутся рубины."
+        ),
+        LevelConfiguration(
+            number: 9,
+            title: "Тронный зал",
+            goal: LevelGoal(type: .reachScore(target: 800), moveLimit: 12),
+            startMessage: "800 очков! Комбинируйте спец-фишки для мега-бонуса."
+        ),
+        LevelConfiguration(
+            number: 10,
+            title: "Щитовая стена",
+            goal: LevelGoal(type: .collect(kind: .shield, count: 22), moveLimit: 14),
+            startMessage: "22 щита — серьёзный вызов. Думайте стратегически."
+        ),
+        LevelConfiguration(
+            number: 11,
+            title: "Звёздный дождь",
+            goal: LevelGoal(type: .collect(kind: .star, count: 20), moveLimit: 11),
+            startMessage: "Мало ходов, много звёзд. Спец-фишки — ваш друг."
+        ),
+        LevelConfiguration(
+            number: 12,
+            title: "Сад удачи",
+            goal: LevelGoal(type: .collect(kind: .leaf, count: 22), moveLimit: 12),
+            startMessage: "Клевер прячется. Ищите длинные цепочки."
+        ),
+        LevelConfiguration(
+            number: 13,
+            title: "Комната сокровищ",
+            goal: LevelGoal(type: .reachScore(target: 1200), moveLimit: 13),
+            startMessage: "1200 очков! Каждый ход должен быть точным."
+        ),
+        LevelConfiguration(
+            number: 14,
+            title: "Коронный марафон",
+            goal: LevelGoal(type: .collect(kind: .crown, count: 28), moveLimit: 15),
+            startMessage: "28 корон за 15 ходов. Нужны мощные комбинации."
+        ),
+        LevelConfiguration(
+            number: 15,
+            title: "Королевский финал",
+            goal: LevelGoal(type: .reachScore(target: 1500), moveLimit: 12),
+            startMessage: "Финальное испытание! 1500 очков. Покажите мастерство!"
         )
     ]
 }
@@ -685,6 +894,129 @@ private struct Match3Board {
 
     func currentMatches() -> Set<GridPosition> {
         allMatches()
+    }
+
+    func allMatchRuns() -> [MatchRun] {
+        var runs: [MatchRun] = []
+
+        for row in 0..<size {
+            var startColumn = 0
+            while startColumn < size {
+                let kind = tiles[row][startColumn].kind
+                var endColumn = startColumn + 1
+                while endColumn < size, tiles[row][endColumn].kind == kind {
+                    endColumn += 1
+                }
+                if endColumn - startColumn >= 3 {
+                    var positions: [GridPosition] = []
+                    for col in startColumn..<endColumn {
+                        positions.append(GridPosition(row: row, column: col))
+                    }
+                    runs.append(MatchRun(positions: positions, direction: .horizontal))
+                }
+                startColumn = endColumn
+            }
+        }
+
+        for column in 0..<size {
+            var startRow = 0
+            while startRow < size {
+                let kind = tiles[startRow][column].kind
+                var endRow = startRow + 1
+                while endRow < size, tiles[endRow][column].kind == kind {
+                    endRow += 1
+                }
+                if endRow - startRow >= 3 {
+                    var positions: [GridPosition] = []
+                    for row in startRow..<endRow {
+                        positions.append(GridPosition(row: row, column: column))
+                    }
+                    runs.append(MatchRun(positions: positions, direction: .vertical))
+                }
+                startRow = endRow
+            }
+        }
+
+        return runs
+    }
+
+    func expandWithPowerUps(_ positions: Set<GridPosition>) -> Set<GridPosition> {
+        var allPositions = positions
+        var processed = Set<GridPosition>()
+
+        while true {
+            let unprocessed = allPositions.subtracting(processed)
+            var newPositions = Set<GridPosition>()
+
+            for pos in unprocessed {
+                processed.insert(pos)
+                let tile = tiles[pos.row][pos.column]
+                switch tile.powerUp {
+                case .rocketHorizontal:
+                    for col in 0..<size {
+                        newPositions.insert(GridPosition(row: pos.row, column: col))
+                    }
+                case .rocketVertical:
+                    for row in 0..<size {
+                        newPositions.insert(GridPosition(row: row, column: pos.column))
+                    }
+                case .bomb:
+                    for dr in -1...1 {
+                        for dc in -1...1 {
+                            let r = pos.row + dr
+                            let c = pos.column + dc
+                            if r >= 0, r < size, c >= 0, c < size {
+                                newPositions.insert(GridPosition(row: r, column: c))
+                            }
+                        }
+                    }
+                case .none:
+                    break
+                }
+            }
+
+            let before = allPositions.count
+            allPositions.formUnion(newPositions)
+            if allPositions.count == before { break }
+        }
+
+        return allPositions
+    }
+
+    func determinePowerUpSpawns(runs: [MatchRun], matched: Set<GridPosition>) -> [PowerUpSpawn] {
+        var spawns: [PowerUpSpawn] = []
+        var usedPositions = Set<GridPosition>()
+
+        var positionDirections: [GridPosition: Set<RunDirection>] = [:]
+        for run in runs {
+            for pos in run.positions {
+                positionDirections[pos, default: []].insert(run.direction)
+            }
+        }
+
+        for (pos, directions) in positionDirections where directions.count > 1 {
+            spawns.append(PowerUpSpawn(position: pos, powerUp: .bomb))
+            usedPositions.insert(pos)
+        }
+
+        for run in runs where run.positions.count >= 5 {
+            let spawnPos = run.positions[run.positions.count / 2]
+            if !usedPositions.contains(spawnPos) {
+                spawns.append(PowerUpSpawn(position: spawnPos, powerUp: .bomb))
+                usedPositions.insert(spawnPos)
+            }
+        }
+
+        for run in runs where run.positions.count == 4 {
+            let hasSpawn = run.positions.contains { usedPositions.contains($0) }
+            if hasSpawn { continue }
+            let spawnPos = run.positions[1]
+            let powerUp: PowerUp = run.direction == .horizontal ? .rocketVertical : .rocketHorizontal
+            spawns.append(PowerUpSpawn(position: spawnPos, powerUp: powerUp))
+            usedPositions.insert(spawnPos)
+        }
+
+        return spawns
     }
 
     mutating func refillAfterRemoval(_ matchedPositions: Set<GridPosition>) -> [TileDrop] {
@@ -766,47 +1098,9 @@ private struct Match3Board {
 
     private func allMatches() -> Set<GridPosition> {
         var positions = Set<GridPosition>()
-
-        for row in 0..<size {
-            var startColumn = 0
-            while startColumn < size {
-                let kind = tiles[row][startColumn].kind
-                var endColumn = startColumn + 1
-
-                while endColumn < size, tiles[row][endColumn].kind == kind {
-                    endColumn += 1
-                }
-
-                if endColumn - startColumn >= 3 {
-                    for column in startColumn..<endColumn {
-                        positions.insert(GridPosition(row: row, column: column))
-                    }
-                }
-
-                startColumn = endColumn
-            }
+        for run in allMatchRuns() {
+            positions.formUnion(run.positions)
         }
-
-        for column in 0..<size {
-            var startRow = 0
-            while startRow < size {
-                let kind = tiles[startRow][column].kind
-                var endRow = startRow + 1
-
-                while endRow < size, tiles[endRow][column].kind == kind {
-                    endRow += 1
-                }
-
-                if endRow - startRow >= 3 {
-                    for row in startRow..<endRow {
-                        positions.insert(GridPosition(row: row, column: column))
-                    }
-                }
-
-                startRow = endRow
-            }
-        }
-
         return positions
     }
 
