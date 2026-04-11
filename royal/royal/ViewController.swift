@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import AudioToolbox
 
 final class ViewController: UIViewController {
     private let boardSize = 6
@@ -63,6 +64,20 @@ final class ViewController: UIViewController {
         var configuration = UIButton.Configuration.tinted()
         configuration.title = "О прототипе"
         configuration.baseBackgroundColor = .white.withAlphaComponent(0.16)
+        configuration.baseForegroundColor = .white
+        configuration.cornerStyle = .large
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 20, bottom: 14, trailing: 20)
+
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.configuration = configuration
+        return button
+    }()
+
+    private let resetButton: UIButton = {
+        var configuration = UIButton.Configuration.tinted()
+        configuration.title = "Начать сначала"
+        configuration.baseBackgroundColor = UIColor.systemRed.withAlphaComponent(0.3)
         configuration.baseForegroundColor = .white
         configuration.cornerStyle = .large
         configuration.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 20, bottom: 14, trailing: 20)
@@ -180,7 +195,7 @@ private extension ViewController {
 
     func layoutInterface() {
         // Map screen: progress label + grid of level icons + about button inside container
-        let mapInnerStack = UIStackView(arrangedSubviews: [mapProgressLabel, levelButtonsStackView, aboutButton])
+        let mapInnerStack = UIStackView(arrangedSubviews: [mapProgressLabel, levelButtonsStackView, aboutButton, resetButton])
         mapInnerStack.translatesAutoresizingMaskIntoConstraints = false
         mapInnerStack.axis = .vertical
         mapInnerStack.spacing = 16
@@ -237,6 +252,9 @@ private extension ViewController {
 
             aboutButton.leadingAnchor.constraint(equalTo: mapInnerStack.leadingAnchor),
             aboutButton.trailingAnchor.constraint(equalTo: mapInnerStack.trailingAnchor),
+
+            resetButton.leadingAnchor.constraint(equalTo: mapInnerStack.leadingAnchor),
+            resetButton.trailingAnchor.constraint(equalTo: mapInnerStack.trailingAnchor),
 
             gameStack.topAnchor.constraint(equalTo: gameContainerView.topAnchor),
             gameStack.leadingAnchor.constraint(equalTo: gameContainerView.leadingAnchor),
@@ -333,6 +351,7 @@ private extension ViewController {
         aboutButton.addTarget(self, action: #selector(didTapAbout), for: .touchUpInside)
         shuffleButton.addTarget(self, action: #selector(didTapShuffle), for: .touchUpInside)
         mapButton.addTarget(self, action: #selector(didTapMap), for: .touchUpInside)
+        resetButton.addTarget(self, action: #selector(didTapReset), for: .touchUpInside)
     }
 
     func showMapScreen() {
@@ -433,6 +452,7 @@ private extension ViewController {
 
         guard let currentSelection = selectedPosition else {
             selectedPosition = position
+            SoundManager.play(.tileSelect)
             renderBoard()
             updateStatus("Выбрана фишка. Нажмите соседнюю клетку для обмена.")
             return
@@ -464,6 +484,7 @@ private extension ViewController {
         } else {
             isResolvingMove = true
             updateStatus("Совпадения нет. Возвращаем фишки назад.")
+            SoundManager.play(.swapDenied)
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 guard let self else { return }
@@ -508,6 +529,17 @@ private extension ViewController {
 
         animateRemoval(at: removalSet) { [weak self] in
             guard let self else { return }
+
+            if !spawns.isEmpty {
+                SoundManager.play(.powerUpCreated)
+            }
+
+            let hasPowerUpActivation = expanded.count > matched.count
+            if hasPowerUpActivation {
+                SoundManager.play(.powerUpActivated)
+            } else {
+                SoundManager.play(.matchRemove)
+            }
 
             for spawn in spawns {
                 self.board.tiles[spawn.position.row][spawn.position.column].powerUp = spawn.powerUp
@@ -585,6 +617,7 @@ private extension ViewController {
         if goalReached {
             isLevelFinished = true
             progressStore.unlockLevel(afterCompleting: currentLevelIndex, totalLevels: levels.count)
+            SoundManager.play(.levelComplete)
 
             if currentLevelIndex + 1 < levels.count {
                 updateStatus("Уровень \(currentLevel.number) пройден! Очки: \(score).")
@@ -614,6 +647,7 @@ private extension ViewController {
                 title: "Ходы закончились",
                 message: "Уровень \(currentLevel.number) не пройден. \(details)"
             )
+            SoundManager.play(.levelFailed)
         }
     }
 
@@ -667,6 +701,24 @@ private extension ViewController {
         """
         let alert = UIAlertController(title: "О прототипе", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    @objc
+    func didTapReset() {
+        let alert = UIAlertController(
+            title: "Начать сначала?",
+            message: "Весь прогресс будет сброшен. Продолжить?",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Сбросить", style: .destructive) { [weak self] _ in
+            guard let self else { return }
+            self.progressStore.resetProgress()
+            self.currentLevelIndex = 0
+            self.showMapScreen()
+            self.startLevel(index: 0)
+        })
         present(alert, animated: true)
     }
 
@@ -1170,6 +1222,34 @@ private struct TileDrop {
     let toRow: Int
 }
 
+private enum SoundManager {
+    enum Sound {
+        case tileSelect
+        case matchRemove
+        case powerUpCreated
+        case powerUpActivated
+        case swapDenied
+        case levelComplete
+        case levelFailed
+
+        var systemSoundID: SystemSoundID {
+            switch self {
+            case .tileSelect:       return 1104  // key press click
+            case .matchRemove:      return 1025  // short pop
+            case .powerUpCreated:   return 1054  // fanfare-like
+            case .powerUpActivated: return 1109  // swoosh
+            case .swapDenied:       return 1073  // negative beep
+            case .levelComplete:    return 1335  // success chime
+            case .levelFailed:      return 1257  // sad tone
+            }
+        }
+    }
+
+    static func play(_ sound: Sound) {
+        AudioServicesPlaySystemSound(sound.systemSoundID)
+    }
+}
+
 private struct ProgressStore {
     private let unlockedLevelKey = "royal.unlockedLevelIndex"
 
@@ -1186,5 +1266,9 @@ private struct ProgressStore {
 
     func unlockedLevelCount(totalLevels: Int) -> Int {
         min(UserDefaults.standard.integer(forKey: unlockedLevelKey) + 1, totalLevels)
+    }
+
+    func resetProgress() {
+        UserDefaults.standard.set(0, forKey: unlockedLevelKey)
     }
 }
