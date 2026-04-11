@@ -9,7 +9,8 @@ import UIKit
 
 final class ViewController: UIViewController {
     private let boardSize = 6
-    private let levelGoal = LevelGoal(targetKind: .crown, targetCount: 12, moveLimit: 14)
+    private let levels = LevelConfiguration.defaultLevels
+    private let progressStore = ProgressStore()
 
     private let titleLabel: UILabel = {
         let label = UILabel()
@@ -104,15 +105,21 @@ final class ViewController: UIViewController {
     private var score = 0
     private var collectedGoalTiles = 0
     private var isLevelFinished = false
+    private var isResolvingMove = false
+    private var currentLevelIndex = 0
+
+    private var currentLevel: LevelConfiguration {
+        levels[currentLevelIndex]
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        currentLevelIndex = progressStore.restoredLevelIndex(maxIndex: levels.count - 1)
         configureView()
         layoutInterface()
         buildBoardGrid()
         wireActions()
-        renderBoard()
-        updateStatus("Поле готово. Начните с первого обмена.")
+        startLevel(index: currentLevelIndex, resetProgress: true)
     }
 }
 
@@ -213,12 +220,17 @@ private extension ViewController {
     }
 
     func updateStatus(_ text: String) {
-        let remainingMoves = max(levelGoal.moveLimit - movesCount, 0)
-        progressLabel.text = "Цель: собрать \(levelGoal.targetCount) \(levelGoal.targetKind.symbol)  |  Собрано: \(collectedGoalTiles)"
+        let remainingMoves = max(currentLevel.goal.moveLimit - movesCount, 0)
+        subtitleLabel.text = "Уровень \(currentLevel.number): \(currentLevel.title)"
+        progressLabel.text = "Цель: собрать \(currentLevel.goal.targetCount) \(currentLevel.goal.targetKind.symbol)  |  Собрано: \(collectedGoalTiles)"
         statusLabel.text = "Очки: \(score)  |  Ходы: \(remainingMoves)\n\(text)"
     }
 
     func handleSelection(at position: GridPosition) {
+        guard !isResolvingMove else {
+            return
+        }
+
         guard !isLevelFinished else {
             updateStatus("Уровень завершен. Перемешайте поле для новой попытки.")
             return
@@ -247,17 +259,35 @@ private extension ViewController {
 
         selectedPosition = nil
 
-        if let result = board.performMove(from: currentSelection, to: position) {
+        board.swapTiles(at: currentSelection, and: position)
+        renderBoard()
+
+        if board.hasMatches() {
+            isResolvingMove = true
             movesCount += 1
-            score += result.totalRemoved * 10
-            collectedGoalTiles += result.removedByKind[levelGoal.targetKind, default: 0]
-            renderBoard()
-            updateStatus("Совпадение найдено. Удалено фишек: \(result.totalRemoved).")
-            evaluateLevelState()
+            updateStatus("Фишки обменены. Проверяем совпадение...")
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                guard let self else { return }
+                let result = self.board.resolveCurrentMatches()
+                self.score += result.totalRemoved * 10
+                self.collectedGoalTiles += result.removedByKind[self.currentLevel.goal.targetKind, default: 0]
+                self.isResolvingMove = false
+                self.renderBoard()
+                self.updateStatus("Совпадение найдено. Удалено фишек: \(result.totalRemoved).")
+                self.evaluateLevelState()
+            }
         } else {
-            renderBoard()
-            updateStatus("Совпадения нет. Обмен отменен.")
-            evaluateLevelState()
+            isResolvingMove = true
+            updateStatus("Совпадения нет. Возвращаем фишки назад.")
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                guard let self else { return }
+                self.board.swapTiles(at: currentSelection, and: position)
+                self.isResolvingMove = false
+                self.renderBoard()
+                self.updateStatus("Совпадения нет. Обмен отменен.")
+            }
         }
     }
 
@@ -269,23 +299,19 @@ private extension ViewController {
 
     @objc
     func didTapShuffle() {
-        board = Match3Board(size: boardSize)
-        selectedPosition = nil
-        movesCount = 0
-        score = 0
-        collectedGoalTiles = 0
-        isLevelFinished = false
-        renderBoard()
-        updateStatus("Поле перемешано. Соберите короны до конца ходов.")
+        startLevel(index: currentLevelIndex, resetProgress: true)
     }
 
     @objc
     func didTapRoadmap() {
         let message = """
+        Открыто уровней: \(progressStore.unlockedLevelCount(totalLevels: levels.count)) из \(levels.count)
+        Текущий уровень: \(currentLevel.number)
+
         Следующий шаг:
-        1. Добавить цели уровня
-        2. Счет и ограничение ходов
-        3. Экран прогресса и карты
+        1. Карта уровней
+        2. Бустеры и спец-фишки
+        3. Оформление замка
         """
         let alert = UIAlertController(title: "План прототипа", message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
@@ -293,30 +319,52 @@ private extension ViewController {
     }
 
     func evaluateLevelState() {
-        if collectedGoalTiles >= levelGoal.targetCount {
+        if collectedGoalTiles >= currentLevel.goal.targetCount {
             isLevelFinished = true
+            progressStore.unlockLevel(afterCompleting: currentLevelIndex, totalLevels: levels.count)
             showCompletionAlert(
                 title: "Победа",
-                message: "Цель выполнена. Вы собрали \(collectedGoalTiles) \(levelGoal.targetKind.symbol) и набрали \(score) очков."
+                message: "Уровень \(currentLevel.number) пройден. Вы собрали \(collectedGoalTiles) \(currentLevel.goal.targetKind.symbol) и набрали \(score) очков."
             )
             return
         }
 
-        if movesCount >= levelGoal.moveLimit {
+        if movesCount >= currentLevel.goal.moveLimit {
             isLevelFinished = true
             showCompletionAlert(
                 title: "Ходы закончились",
-                message: "Цель не выполнена. Собрано \(collectedGoalTiles) из \(levelGoal.targetCount), очки: \(score)."
+                message: "Уровень \(currentLevel.number) не пройден. Собрано \(collectedGoalTiles) из \(currentLevel.goal.targetCount), очки: \(score)."
             )
         }
     }
 
     func showCompletionAlert(title: String, message: String) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Новый запуск", style: .default) { [weak self] _ in
+        if title == "Победа", currentLevelIndex + 1 < levels.count {
+            alert.addAction(UIAlertAction(title: "Следующий уровень", style: .default) { [weak self] _ in
+                guard let self else { return }
+                self.startLevel(index: self.currentLevelIndex + 1, resetProgress: true)
+            })
+        }
+        alert.addAction(UIAlertAction(title: "Переиграть", style: .default) { [weak self] _ in
             self?.didTapShuffle()
         })
         present(alert, animated: true)
+    }
+
+    func startLevel(index: Int, resetProgress: Bool) {
+        currentLevelIndex = max(0, min(index, levels.count - 1))
+        board = Match3Board(size: boardSize)
+        selectedPosition = nil
+        movesCount = 0
+        score = 0
+        collectedGoalTiles = 0
+        isLevelFinished = false
+        isResolvingMove = false
+        renderBoard()
+        if resetProgress {
+            updateStatus(currentLevel.startMessage)
+        }
     }
 }
 
@@ -337,6 +385,34 @@ private struct LevelGoal {
     let targetKind: TileKind
     let targetCount: Int
     let moveLimit: Int
+}
+
+private struct LevelConfiguration {
+    let number: Int
+    let title: String
+    let goal: LevelGoal
+    let startMessage: String
+
+    static let defaultLevels: [LevelConfiguration] = [
+        LevelConfiguration(
+            number: 1,
+            title: "Королевский двор",
+            goal: LevelGoal(targetKind: .crown, targetCount: 12, moveLimit: 14),
+            startMessage: "Соберите короны до конца ходов."
+        ),
+        LevelConfiguration(
+            number: 2,
+            title: "Рубиновая галерея",
+            goal: LevelGoal(targetKind: .ruby, targetCount: 14, moveLimit: 13),
+            startMessage: "Теперь цель уровня - собрать рубины."
+        ),
+        LevelConfiguration(
+            number: 3,
+            title: "Зал щитов",
+            goal: LevelGoal(targetKind: .shield, targetCount: 15, moveLimit: 12),
+            startMessage: "Щиты сложнее. Ходов меньше, думайте на 2 шага вперед."
+        )
+    ]
 }
 
 private enum TileKind: CaseIterable {
@@ -395,16 +471,18 @@ private struct Match3Board {
         }
     }
 
-    mutating func performMove(from source: GridPosition, to target: GridPosition) -> MoveResult? {
-        swapTiles(at: source, and: target)
+    mutating func swapTiles(at first: GridPosition, and second: GridPosition) {
+        let temporaryTile = tiles[first.row][first.column]
+        tiles[first.row][first.column] = tiles[second.row][second.column]
+        tiles[second.row][second.column] = temporaryTile
+    }
 
-        let matches = allMatches()
-        guard !matches.isEmpty else {
-            swapTiles(at: source, and: target)
-            return nil
-        }
+    func hasMatches() -> Bool {
+        !allMatches().isEmpty
+    }
 
-        return resolve(matches: matches)
+    mutating func resolveCurrentMatches() -> MoveResult {
+        resolve(matches: allMatches())
     }
 
     private mutating func resolve(matches: Set<GridPosition>) -> MoveResult {
@@ -491,12 +569,6 @@ private struct Match3Board {
         return positions
     }
 
-    private mutating func swapTiles(at first: GridPosition, and second: GridPosition) {
-        let temporaryTile = tiles[first.row][first.column]
-        tiles[first.row][first.column] = tiles[second.row][second.column]
-        tiles[second.row][second.column] = temporaryTile
-    }
-
     private func forbiddenKinds(row: Int, column: Int, currentColumn: [Match3Tile] = []) -> Set<TileKind> {
         var forbiddenKinds = Set<TileKind>()
 
@@ -546,4 +618,23 @@ private struct Match3Board {
 private struct MoveResult {
     let totalRemoved: Int
     let removedByKind: [TileKind: Int]
+}
+
+private struct ProgressStore {
+    private let unlockedLevelKey = "royal.unlockedLevelIndex"
+
+    func restoredLevelIndex(maxIndex: Int) -> Int {
+        let savedIndex = UserDefaults.standard.integer(forKey: unlockedLevelKey)
+        return max(0, min(savedIndex, maxIndex))
+    }
+
+    func unlockLevel(afterCompleting index: Int, totalLevels: Int) {
+        let nextIndex = min(index + 1, totalLevels - 1)
+        let currentStoredIndex = UserDefaults.standard.integer(forKey: unlockedLevelKey)
+        UserDefaults.standard.set(max(currentStoredIndex, nextIndex), forKey: unlockedLevelKey)
+    }
+
+    func unlockedLevelCount(totalLevels: Int) -> Int {
+        min(UserDefaults.standard.integer(forKey: unlockedLevelKey) + 1, totalLevels)
+    }
 }
