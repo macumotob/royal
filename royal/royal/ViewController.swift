@@ -234,6 +234,7 @@ final class ViewController: UIViewController {
     private var movesCount = 0
     private var score = 0
     private var collectedGoalTiles = 0
+    private var clearedObstacles = 0
     private var isLevelFinished = false
     private var isResolvingMove = false
     private var currentLevelIndex = 0
@@ -528,11 +529,42 @@ private extension ViewController {
                 button.backgroundColor = tile.kind.color
                 button.transform = .identity
 
+                switch tile.obstacle {
+                case .ice(let hits):
+                    button.setTitle(hits > 1 ? "🧊" : "❄️", for: .normal)
+                    button.backgroundColor = tile.kind.color.withAlphaComponent(0.5)
+                case .chain:
+                    button.setTitle("⛓️", for: .normal)
+                    button.backgroundColor = tile.kind.color.withAlphaComponent(0.5)
+                case .none:
+                    break
+                }
+
                 let isSelected = selectedPosition == GridPosition(row: row, column: column)
                 let hasPowerUp = tile.powerUp != .none
-                button.layer.borderWidth = isSelected ? 3 : (hasPowerUp ? 2 : 0)
-                button.layer.borderColor = isSelected ? UIColor.white.cgColor : UIColor.yellow.cgColor
-                button.alpha = isSelected ? 0.82 : 1.0
+                let hasObstacle = tile.obstacle != .none
+
+                if isSelected {
+                    button.layer.borderWidth = 3
+                    button.layer.borderColor = UIColor.white.cgColor
+                    button.alpha = 0.82
+                } else if hasObstacle {
+                    button.layer.borderWidth = 2
+                    if case .chain = tile.obstacle {
+                        button.layer.borderColor = UIColor.gray.cgColor
+                    } else {
+                        button.layer.borderColor = UIColor.cyan.cgColor
+                    }
+                    button.alpha = 1.0
+                } else if hasPowerUp {
+                    button.layer.borderWidth = 2
+                    button.layer.borderColor = UIColor.yellow.cgColor
+                    button.alpha = 1.0
+                } else {
+                    button.layer.borderWidth = 0
+                    button.layer.borderColor = nil
+                    button.alpha = 1.0
+                }
             }
         }
     }
@@ -546,6 +578,8 @@ private extension ViewController {
             progressLabel.text = "Цель: собрать \(count) \(kind.symbol)  |  Собрано: \(collectedGoalTiles)"
         case .reachScore(let target):
             progressLabel.text = "Цель: набрать \(target) очков  |  Набрано: \(score)"
+        case .clearObstacles(let count):
+            progressLabel.text = "Цель: разбить \(count) препятствий  |  Разбито: \(clearedObstacles)"
         }
 
         statusLabel.text = "Очки: \(score)  |  Ходы: \(remainingMoves)\n\(text)"
@@ -553,11 +587,12 @@ private extension ViewController {
 
     func startLevel(index: Int) {
         currentLevelIndex = max(0, min(index, levels.count - 1))
-        board = Match3Board(size: boardSize)
+        board = Match3Board(size: boardSize, obstacles: currentLevel.obstacles)
         selectedPosition = nil
         movesCount = 0
         score = 0
         collectedGoalTiles = 0
+        clearedObstacles = 0
         isLevelFinished = false
         isResolvingMove = false
         renderBoard()
@@ -592,6 +627,15 @@ private extension ViewController {
         }
 
         selectedPosition = nil
+
+        if board.tiles[currentSelection.row][currentSelection.column].obstacle != .none
+            || board.tiles[position.row][position.column].obstacle != .none {
+            SoundManager.play(.swapDenied)
+            renderBoard()
+            updateStatus("Эта фишка заблокирована препятствием!")
+            return
+        }
+
         board.swapTiles(at: currentSelection, and: position)
         renderBoard()
 
@@ -615,14 +659,15 @@ private extension ViewController {
         }
     }
 
-    func animateResolveChain(totalRemoved: Int, removedByKind: [TileKind: Int]) {
+    func animateResolveChain(totalRemoved: Int, removedByKind: [TileKind: Int], totalClearedObstacles: Int = 0) {
         let matched = board.currentMatches()
         guard !matched.isEmpty else {
             score += totalRemoved * 10
+            clearedObstacles += totalClearedObstacles
             switch currentLevel.goal.type {
             case .collect(let kind, _):
                 collectedGoalTiles += removedByKind[kind, default: 0]
-            case .reachScore:
+            case .reachScore, .clearObstacles:
                 break
             }
             isResolvingMove = false
@@ -636,15 +681,61 @@ private extension ViewController {
         let spawns = board.determinePowerUpSpawns(runs: runs, matched: matched)
         let expanded = board.expandWithPowerUps(matched)
 
+        // Process obstacles on matched/expanded tiles
+        var obstacleProtected = Set<GridPosition>()
+        var stepClearedObstacles = 0
+        for pos in expanded {
+            switch board.tiles[pos.row][pos.column].obstacle {
+            case .ice(let hits) where hits > 1:
+                board.tiles[pos.row][pos.column].obstacle = .ice(hits: hits - 1)
+                obstacleProtected.insert(pos)
+            case .ice:
+                board.tiles[pos.row][pos.column].obstacle = .none
+                stepClearedObstacles += 1
+            case .chain:
+                board.tiles[pos.row][pos.column].obstacle = .none
+                stepClearedObstacles += 1
+            case .none:
+                break
+            }
+        }
+
+        // Damage obstacles adjacent to matched tiles
+        var processedAdjacent = Set<GridPosition>()
+        for pos in expanded {
+            for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                let r = pos.row + dr
+                let c = pos.column + dc
+                guard r >= 0, r < boardSize, c >= 0, c < boardSize else { continue }
+                let adj = GridPosition(row: r, column: c)
+                guard !expanded.contains(adj), !processedAdjacent.contains(adj) else { continue }
+                processedAdjacent.insert(adj)
+                switch board.tiles[r][c].obstacle {
+                case .ice(let hits) where hits > 1:
+                    board.tiles[r][c].obstacle = .ice(hits: hits - 1)
+                case .ice:
+                    board.tiles[r][c].obstacle = .none
+                    stepClearedObstacles += 1
+                case .chain:
+                    board.tiles[r][c].obstacle = .none
+                    stepClearedObstacles += 1
+                case .none:
+                    break
+                }
+            }
+        }
+
         var removalSet = expanded
         let spawnPositionSet = Set(spawns.map { $0.position })
         removalSet.subtract(spawnPositionSet)
+        removalSet.subtract(obstacleProtected)
 
         var updatedByKind = removedByKind
         for pos in removalSet {
             updatedByKind[board.tiles[pos.row][pos.column].kind, default: 0] += 1
         }
         let updatedTotal = totalRemoved + removalSet.count
+        let updatedClearedObstacles = totalClearedObstacles + stepClearedObstacles
 
         animateRemoval(at: removalSet) { [weak self] in
             guard let self else { return }
@@ -670,7 +761,7 @@ private extension ViewController {
 
             self.animateDrops(drops) { [weak self] in
                 guard let self else { return }
-                self.animateResolveChain(totalRemoved: updatedTotal, removedByKind: updatedByKind)
+                self.animateResolveChain(totalRemoved: updatedTotal, removedByKind: updatedByKind, totalClearedObstacles: updatedClearedObstacles)
             }
         }
     }
@@ -731,6 +822,8 @@ private extension ViewController {
             goalReached = collectedGoalTiles >= count
         case .reachScore(let target):
             goalReached = score >= target
+        case .clearObstacles(let count):
+            goalReached = clearedObstacles >= count
         }
 
         if goalReached {
@@ -774,6 +867,8 @@ private extension ViewController {
                 details = "Собрано \(collectedGoalTiles) из \(count) \(kind.symbol), очки: \(score)."
             case .reachScore(let target):
                 details = "Набрано \(score) из \(target) очков."
+            case .clearObstacles(let count):
+                details = "Разбито \(clearedObstacles) из \(count) препятствий."
             }
             showCompletionAlert(
                 title: "Ходы закончились",
@@ -955,6 +1050,7 @@ private struct GridPosition: Hashable {
 private struct Match3Tile {
     let kind: TileKind
     var powerUp: PowerUp = .none
+    var obstacle: Obstacle = .none
 }
 
 private enum PowerUp {
@@ -962,6 +1058,12 @@ private enum PowerUp {
     case rocketHorizontal
     case rocketVertical
     case bomb
+}
+
+private enum Obstacle: Equatable {
+    case none
+    case ice(hits: Int)
+    case chain
 }
 
 private enum RunDirection {
@@ -987,6 +1089,7 @@ private struct LevelGoal {
 private enum GoalType {
     case collect(kind: TileKind, count: Int)
     case reachScore(target: Int)
+    case clearObstacles(count: Int)
 
     var description: String {
         switch self {
@@ -994,6 +1097,8 @@ private enum GoalType {
             return "собрать \(count) \(kind.symbol)"
         case .reachScore(let target):
             return "набрать \(target) очков"
+        case .clearObstacles(let count):
+            return "разбить \(count) препятствий"
         }
     }
 }
@@ -1003,6 +1108,15 @@ private struct LevelConfiguration {
     let title: String
     let goal: LevelGoal
     let startMessage: String
+    let obstacles: [(GridPosition, Obstacle)]
+
+    init(number: Int, title: String, goal: LevelGoal, startMessage: String, obstacles: [(GridPosition, Obstacle)] = []) {
+        self.number = number
+        self.title = title
+        self.goal = goal
+        self.startMessage = startMessage
+        self.obstacles = obstacles
+    }
 
     static let defaultLevels: [LevelConfiguration] = [
         LevelConfiguration(
@@ -1044,8 +1158,14 @@ private struct LevelConfiguration {
         LevelConfiguration(
             number: 7,
             title: "Корона и рубин",
-            goal: LevelGoal(type: .collect(kind: .crown, count: 18), moveLimit: 13),
-            startMessage: "Корон нужно много. Создавайте ракеты и бомбы!"
+            goal: LevelGoal(type: .collect(kind: .crown, count: 18), moveLimit: 15),
+            startMessage: "Лёд блокирует фишки! Совпадения рядом разбивают его.",
+            obstacles: [
+                (GridPosition(row: 1, column: 1), .ice(hits: 1)),
+                (GridPosition(row: 1, column: 4), .ice(hits: 1)),
+                (GridPosition(row: 4, column: 1), .ice(hits: 1)),
+                (GridPosition(row: 4, column: 4), .ice(hits: 1)),
+            ]
         ),
         LevelConfiguration(
             number: 8,
@@ -1062,8 +1182,14 @@ private struct LevelConfiguration {
         LevelConfiguration(
             number: 10,
             title: "Щитовая стена",
-            goal: LevelGoal(type: .collect(kind: .shield, count: 22), moveLimit: 14),
-            startMessage: "22 щита — серьёзный вызов. Думайте стратегически."
+            goal: LevelGoal(type: .collect(kind: .shield, count: 22), moveLimit: 16),
+            startMessage: "Цепи не дают двигать фишки. Собирайте совпадения рядом!",
+            obstacles: [
+                (GridPosition(row: 0, column: 2), .chain),
+                (GridPosition(row: 0, column: 3), .chain),
+                (GridPosition(row: 5, column: 2), .chain),
+                (GridPosition(row: 5, column: 3), .chain),
+            ]
         ),
         LevelConfiguration(
             number: 11,
@@ -1079,21 +1205,47 @@ private struct LevelConfiguration {
         ),
         LevelConfiguration(
             number: 13,
-            title: "Комната сокровищ",
-            goal: LevelGoal(type: .reachScore(target: 1200), moveLimit: 13),
-            startMessage: "1200 очков! Каждый ход должен быть точным."
+            title: "Ледяной замок",
+            goal: LevelGoal(type: .clearObstacles(count: 8), moveLimit: 15),
+            startMessage: "Разбейте все преграды! Лёд и цепи блокируют поле.",
+            obstacles: [
+                (GridPosition(row: 0, column: 1), .ice(hits: 1)),
+                (GridPosition(row: 0, column: 4), .ice(hits: 1)),
+                (GridPosition(row: 1, column: 2), .ice(hits: 2)),
+                (GridPosition(row: 1, column: 3), .ice(hits: 2)),
+                (GridPosition(row: 4, column: 2), .chain),
+                (GridPosition(row: 4, column: 3), .chain),
+                (GridPosition(row: 5, column: 1), .ice(hits: 1)),
+                (GridPosition(row: 5, column: 4), .ice(hits: 1)),
+            ]
         ),
         LevelConfiguration(
             number: 14,
             title: "Коронный марафон",
-            goal: LevelGoal(type: .collect(kind: .crown, count: 28), moveLimit: 15),
-            startMessage: "28 корон за 15 ходов. Нужны мощные комбинации."
+            goal: LevelGoal(type: .collect(kind: .crown, count: 28), moveLimit: 17),
+            startMessage: "28 корон! Лёд и цепи мешают. Используйте спец-фишки!",
+            obstacles: [
+                (GridPosition(row: 1, column: 0), .ice(hits: 2)),
+                (GridPosition(row: 1, column: 5), .ice(hits: 2)),
+                (GridPosition(row: 2, column: 2), .chain),
+                (GridPosition(row: 3, column: 3), .chain),
+            ]
         ),
         LevelConfiguration(
             number: 15,
             title: "Королевский финал",
-            goal: LevelGoal(type: .reachScore(target: 1500), moveLimit: 12),
-            startMessage: "Финальное испытание! 1500 очков. Покажите мастерство!"
+            goal: LevelGoal(type: .reachScore(target: 1500), moveLimit: 14),
+            startMessage: "Финальное испытание! Преграды повсюду. Покажите мастерство!",
+            obstacles: [
+                (GridPosition(row: 0, column: 0), .ice(hits: 2)),
+                (GridPosition(row: 0, column: 5), .ice(hits: 2)),
+                (GridPosition(row: 2, column: 1), .chain),
+                (GridPosition(row: 2, column: 4), .chain),
+                (GridPosition(row: 3, column: 1), .ice(hits: 1)),
+                (GridPosition(row: 3, column: 4), .ice(hits: 1)),
+                (GridPosition(row: 5, column: 0), .ice(hits: 2)),
+                (GridPosition(row: 5, column: 5), .ice(hits: 2)),
+            ]
         )
     ]
 }
@@ -1140,7 +1292,7 @@ private struct Match3Board {
     let size: Int
     var tiles: [[Match3Tile]]
 
-    init(size: Int) {
+    init(size: Int, obstacles: [(GridPosition, Obstacle)] = []) {
         self.size = size
         self.tiles = Array(
             repeating: Array(repeating: Match3Tile(kind: .crown), count: size),
@@ -1150,6 +1302,12 @@ private struct Match3Board {
         for row in 0..<size {
             for column in 0..<size {
                 tiles[row][column] = Match3Tile(kind: Self.randomKind(avoiding: forbiddenKinds(row: row, column: column)))
+            }
+        }
+
+        for (pos, obstacle) in obstacles {
+            if pos.row >= 0, pos.row < size, pos.column >= 0, pos.column < size {
+                tiles[pos.row][pos.column].obstacle = obstacle
             }
         }
     }
