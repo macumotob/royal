@@ -524,6 +524,8 @@ private extension ViewController {
                     button.setTitle("⬆️", for: .normal)
                 case .bomb:
                     button.setTitle("💣", for: .normal)
+                case .magnet:
+                    button.setTitle("🧲", for: .normal)
                 }
 
                 button.backgroundColor = tile.kind.color
@@ -1058,6 +1060,7 @@ private enum PowerUp {
     case rocketHorizontal
     case rocketVertical
     case bomb
+    case magnet
 }
 
 private enum Obstacle: Equatable {
@@ -1246,6 +1249,223 @@ private struct LevelConfiguration {
                 (GridPosition(row: 5, column: 0), .ice(hits: 2)),
                 (GridPosition(row: 5, column: 5), .ice(hits: 2)),
             ]
+        ),
+        // --- Act II: Магнит ---
+        LevelConfiguration(
+            number: 16,
+            title: "Магнитное поле",
+            goal: LevelGoal(type: .collect(kind: .ruby, count: 24), moveLimit: 14),
+            startMessage: "L/Т-комбо создаёт магнит 🧲 — собирает все фишки одного цвета!"
+        ),
+        LevelConfiguration(
+            number: 17,
+            title: "Ледяной лабиринт",
+            goal: LevelGoal(type: .clearObstacles(count: 6), moveLimit: 14),
+            startMessage: "Лёд повсюду. Магнит поможет расчистить путь!",
+            obstacles: [
+                (GridPosition(row: 0, column: 1), .ice(hits: 1)),
+                (GridPosition(row: 0, column: 4), .ice(hits: 1)),
+                (GridPosition(row: 2, column: 0), .ice(hits: 2)),
+                (GridPosition(row: 2, column: 5), .ice(hits: 2)),
+                (GridPosition(row: 4, column: 2), .ice(hits: 1)),
+                (GridPosition(row: 4, column: 3), .ice(hits: 1)),
+            ]
+        ),
+        LevelConfiguration(
+            number: 18,
+            title: "Цепной мост",
+            goal: LevelGoal(type: .collect(kind: .shield, count: 20), moveLimit: 13),
+            startMessage: "Цепи перекрыли мост. Освободите щиты!",
+            obstacles: [
+                (GridPosition(row: 1, column: 1), .chain),
+                (GridPosition(row: 1, column: 4), .chain),
+                (GridPosition(row: 2, column: 2), .chain),
+                (GridPosition(row: 3, column: 3), .chain),
+                (GridPosition(row: 4, column: 1), .chain),
+                (GridPosition(row: 4, column: 4), .chain),
+            ]
+        ),
+        LevelConfiguration(
+            number: 19,
+            title: "Звёздная ночь",
+            goal: LevelGoal(type: .collect(kind: .star, count: 22), moveLimit: 12),
+            startMessage: "Соберите звёзды! Создавайте магниты для массового сбора."
+        ),
+        LevelConfiguration(
+            number: 20,
+            title: "Тысяча очков",
+            goal: LevelGoal(type: .reachScore(target: 1000), moveLimit: 11),
+            startMessage: "1000 очков за 11 ходов. Магнит — ваш лучший друг!",
+            obstacles: [
+                (GridPosition(row: 0, column: 0), .ice(hits: 1)),
+                (GridPosition(row: 0, column: 5), .ice(hits: 1)),
+                (GridPosition(row: 5, column: 0), .ice(hits: 1)),
+                (GridPosition(row: 5, column: 5), .ice(hits: 1)),
+            ]
+        ),
+        // --- Act III: Сложные комбинации ---
+        LevelConfiguration(
+            number: 21,
+            title: "Корона во льду",
+            goal: LevelGoal(type: .collect(kind: .crown, count: 25), moveLimit: 15),
+            startMessage: "Короны заморожены. Растопите лёд и соберите их!",
+            obstacles: [
+                (GridPosition(row: 1, column: 1), .ice(hits: 2)),
+                (GridPosition(row: 1, column: 2), .ice(hits: 1)),
+                (GridPosition(row: 1, column: 3), .ice(hits: 1)),
+                (GridPosition(row: 1, column: 4), .ice(hits: 2)),
+                (GridPosition(row: 4, column: 1), .ice(hits: 2)),
+                (GridPosition(row: 4, column: 4), .ice(hits: 2)),
+            ]
+        ),
+        LevelConfiguration(
+            number: 22,
+            title: "Рубиновая крепость",
+            goal: LevelGoal(type: .collect(kind: .ruby, count: 28), moveLimit: 16),
+            startMessage: "Крепость окружена цепями и льдом. Прорывайтесь!",
+            obstacles: [
+                (GridPosition(row: 0, column: 2), .chain),
+                (GridPosition(row: 0, column: 3), .chain),
+                (GridPosition(row: 2, column: 0), .ice(hits: 2)),
+                (GridPosition(row: 2, column: 5), .ice(hits: 2)),
+                (GridPosition(row: 3, column: 0), .ice(hits: 1)),
+                (GridPosition(row: 3, column: 5), .ice(hits: 1)),
+            ]
+        ),
+        LevelConfiguration(
+            number: 23,
+            title: "Зелёный лабиринт",
+            goal: LevelGoal(type: .clearObstacles(count: 10), moveLimit: 16),
+            startMessage: "10 преград! Используйте ракеты и магниты.",
+            obstacles: [
+                (GridPosition(row: 0, column: 0), .ice(hits: 1)),
+                (GridPosition(row: 0, column: 5), .ice(hits: 1)),
+                (GridPosition(row: 1, column: 2), .chain),
+                (GridPosition(row: 1, column: 3), .chain),
+                (GridPosition(row: 2, column: 1), .ice(hits: 2)),
+                (GridPosition(row: 2, column: 4), .ice(hits: 2)),
+                (GridPosition(row: 3, column: 1), .chain),
+                (GridPosition(row: 3, column: 4), .chain),
+                (GridPosition(row: 5, column: 0), .ice(hits: 1)),
+                (GridPosition(row: 5, column: 5), .ice(hits: 1)),
+            ]
+        ),
+        LevelConfiguration(
+            number: 24,
+            title: "Щитовой турнир",
+            goal: LevelGoal(type: .collect(kind: .shield, count: 30), moveLimit: 17),
+            startMessage: "30 щитов! Лёд и цепи на поле. Думайте на 2 хода вперёд.",
+            obstacles: [
+                (GridPosition(row: 0, column: 1), .ice(hits: 1)),
+                (GridPosition(row: 0, column: 4), .ice(hits: 1)),
+                (GridPosition(row: 2, column: 2), .chain),
+                (GridPosition(row: 3, column: 3), .chain),
+                (GridPosition(row: 5, column: 1), .ice(hits: 2)),
+                (GridPosition(row: 5, column: 4), .ice(hits: 2)),
+            ]
+        ),
+        LevelConfiguration(
+            number: 25,
+            title: "Звёздный гейзер",
+            goal: LevelGoal(type: .reachScore(target: 1800), moveLimit: 14),
+            startMessage: "1800 очков! Спец-фишки — ключ к победе.",
+            obstacles: [
+                (GridPosition(row: 1, column: 0), .ice(hits: 2)),
+                (GridPosition(row: 1, column: 5), .ice(hits: 2)),
+                (GridPosition(row: 4, column: 0), .ice(hits: 2)),
+                (GridPosition(row: 4, column: 5), .ice(hits: 2)),
+            ]
+        ),
+        // --- Act IV: Мастерство ---
+        LevelConfiguration(
+            number: 26,
+            title: "Двойной лёд",
+            goal: LevelGoal(type: .clearObstacles(count: 12), moveLimit: 18),
+            startMessage: "Двойной лёд повсюду! Каждый ход на счету.",
+            obstacles: [
+                (GridPosition(row: 0, column: 1), .ice(hits: 2)),
+                (GridPosition(row: 0, column: 4), .ice(hits: 2)),
+                (GridPosition(row: 1, column: 0), .ice(hits: 2)),
+                (GridPosition(row: 1, column: 5), .ice(hits: 2)),
+                (GridPosition(row: 2, column: 2), .ice(hits: 2)),
+                (GridPosition(row: 2, column: 3), .ice(hits: 2)),
+                (GridPosition(row: 3, column: 2), .ice(hits: 2)),
+                (GridPosition(row: 3, column: 3), .ice(hits: 2)),
+                (GridPosition(row: 4, column: 0), .ice(hits: 2)),
+                (GridPosition(row: 4, column: 5), .ice(hits: 2)),
+                (GridPosition(row: 5, column: 1), .ice(hits: 2)),
+                (GridPosition(row: 5, column: 4), .ice(hits: 2)),
+            ]
+        ),
+        LevelConfiguration(
+            number: 27,
+            title: "Клеверный шторм",
+            goal: LevelGoal(type: .collect(kind: .leaf, count: 30), moveLimit: 15),
+            startMessage: "Шторм принёс клевер. Собирайте быстро!",
+            obstacles: [
+                (GridPosition(row: 1, column: 1), .chain),
+                (GridPosition(row: 1, column: 4), .chain),
+                (GridPosition(row: 4, column: 1), .chain),
+                (GridPosition(row: 4, column: 4), .chain),
+            ]
+        ),
+        LevelConfiguration(
+            number: 28,
+            title: "Магнитная буря",
+            goal: LevelGoal(type: .reachScore(target: 2000), moveLimit: 13),
+            startMessage: "2000 очков! Создавайте магниты из L/T-комбинаций.",
+            obstacles: [
+                (GridPosition(row: 0, column: 0), .ice(hits: 1)),
+                (GridPosition(row: 0, column: 5), .ice(hits: 1)),
+                (GridPosition(row: 2, column: 1), .ice(hits: 2)),
+                (GridPosition(row: 2, column: 4), .ice(hits: 2)),
+                (GridPosition(row: 3, column: 1), .chain),
+                (GridPosition(row: 3, column: 4), .chain),
+                (GridPosition(row: 5, column: 0), .ice(hits: 1)),
+                (GridPosition(row: 5, column: 5), .ice(hits: 1)),
+            ]
+        ),
+        LevelConfiguration(
+            number: 29,
+            title: "Последняя крепость",
+            goal: LevelGoal(type: .clearObstacles(count: 14), moveLimit: 18),
+            startMessage: "14 преград! Магниты и ракеты — ваше оружие.",
+            obstacles: [
+                (GridPosition(row: 0, column: 0), .ice(hits: 2)),
+                (GridPosition(row: 0, column: 2), .chain),
+                (GridPosition(row: 0, column: 3), .chain),
+                (GridPosition(row: 0, column: 5), .ice(hits: 2)),
+                (GridPosition(row: 1, column: 1), .ice(hits: 1)),
+                (GridPosition(row: 1, column: 4), .ice(hits: 1)),
+                (GridPosition(row: 2, column: 2), .ice(hits: 2)),
+                (GridPosition(row: 2, column: 3), .ice(hits: 2)),
+                (GridPosition(row: 3, column: 2), .ice(hits: 2)),
+                (GridPosition(row: 3, column: 3), .ice(hits: 2)),
+                (GridPosition(row: 4, column: 1), .chain),
+                (GridPosition(row: 4, column: 4), .chain),
+                (GridPosition(row: 5, column: 0), .ice(hits: 1)),
+                (GridPosition(row: 5, column: 5), .ice(hits: 1)),
+            ]
+        ),
+        LevelConfiguration(
+            number: 30,
+            title: "Королевский триумф",
+            goal: LevelGoal(type: .reachScore(target: 2500), moveLimit: 15),
+            startMessage: "Финал второго акта! 2500 очков. Вы — мастер Royal Quest!",
+            obstacles: [
+                (GridPosition(row: 0, column: 0), .ice(hits: 2)),
+                (GridPosition(row: 0, column: 5), .ice(hits: 2)),
+                (GridPosition(row: 1, column: 2), .chain),
+                (GridPosition(row: 1, column: 3), .chain),
+                (GridPosition(row: 2, column: 0), .ice(hits: 2)),
+                (GridPosition(row: 2, column: 5), .ice(hits: 2)),
+                (GridPosition(row: 3, column: 0), .chain),
+                (GridPosition(row: 3, column: 5), .chain),
+                (GridPosition(row: 4, column: 2), .ice(hits: 2)),
+                (GridPosition(row: 4, column: 3), .ice(hits: 2)),
+                (GridPosition(row: 5, column: 0), .ice(hits: 2)),
+                (GridPosition(row: 5, column: 5), .ice(hits: 2)),
+            ]
         )
     ]
 }
@@ -1404,6 +1624,15 @@ private struct Match3Board {
                             }
                         }
                     }
+                case .magnet:
+                    let magnetKind = tiles[pos.row][pos.column].kind
+                    for r in 0..<size {
+                        for c in 0..<size {
+                            if tiles[r][c].kind == magnetKind {
+                                newPositions.insert(GridPosition(row: r, column: c))
+                            }
+                        }
+                    }
                 case .none:
                     break
                 }
@@ -1429,14 +1658,14 @@ private struct Match3Board {
         }
 
         for (pos, directions) in positionDirections where directions.count > 1 {
-            spawns.append(PowerUpSpawn(position: pos, powerUp: .bomb))
+            spawns.append(PowerUpSpawn(position: pos, powerUp: .magnet))
             usedPositions.insert(pos)
         }
 
         for run in runs where run.positions.count >= 5 {
             let spawnPos = run.positions[run.positions.count / 2]
             if !usedPositions.contains(spawnPos) {
-                spawns.append(PowerUpSpawn(position: spawnPos, powerUp: .bomb))
+                spawns.append(PowerUpSpawn(position: spawnPos, powerUp: .magnet))
                 usedPositions.insert(spawnPos)
             }
         }
@@ -1691,7 +1920,7 @@ private struct ProgressStore {
     func resetProgress() {
         UserDefaults.standard.set(0, forKey: unlockedLevelKey)
         UserDefaults.standard.set(0, forKey: spentStarsKey)
-        for i in 0..<20 {
+        for i in 0..<40 {
             UserDefaults.standard.removeObject(forKey: starsKeyPrefix + "\(i)")
             UserDefaults.standard.removeObject(forKey: decoratedKeyPrefix + "\(i)")
         }
