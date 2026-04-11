@@ -88,6 +88,74 @@ final class ViewController: UIViewController {
         return button
     }()
 
+    private let castleButton: UIButton = {
+        var configuration = UIButton.Configuration.filled()
+        configuration.title = "🏰 Замок"
+        configuration.baseBackgroundColor = UIColor(red: 0.85, green: 0.65, blue: 0.2, alpha: 1.0)
+        configuration.baseForegroundColor = .white
+        configuration.cornerStyle = .large
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 20, bottom: 14, trailing: 20)
+
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.configuration = configuration
+        return button
+    }()
+
+    private let castleContainerView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = UIColor.white.withAlphaComponent(0.12)
+        view.layer.cornerRadius = 24
+        view.isHidden = true
+        return view
+    }()
+
+    private let castleTitleLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = .systemFont(ofSize: 20, weight: .bold)
+        label.textColor = .white
+        label.textAlignment = .center
+        label.text = "🏰 Королевский замок"
+        return label
+    }()
+
+    private let castleStarsLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = .systemFont(ofSize: 15, weight: .semibold)
+        label.textColor = .white.withAlphaComponent(0.84)
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        return label
+    }()
+
+    private let roomsStackView: UIStackView = {
+        let stackView = UIStackView()
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.axis = .vertical
+        stackView.spacing = 10
+        stackView.alignment = .fill
+        return stackView
+    }()
+
+    private let castleBackButton: UIButton = {
+        var configuration = UIButton.Configuration.tinted()
+        configuration.title = "К карте уровней"
+        configuration.baseBackgroundColor = .white.withAlphaComponent(0.16)
+        configuration.baseForegroundColor = .white
+        configuration.cornerStyle = .large
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 20, bottom: 14, trailing: 20)
+
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.configuration = configuration
+        return button
+    }()
+
+    private var roomButtons: [UIButton] = []
+
     private let gameContainerView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -170,6 +238,7 @@ final class ViewController: UIViewController {
     private var isResolvingMove = false
     private var currentLevelIndex = 0
     private var levelButtons: [UIButton] = []
+    private var levelStarLabels: [UILabel] = []
     private let levelsPerRow = 5
 
     private var currentLevel: LevelConfiguration {
@@ -194,14 +263,23 @@ private extension ViewController {
     }
 
     func layoutInterface() {
-        // Map screen: progress label + grid of level icons + about button inside container
-        let mapInnerStack = UIStackView(arrangedSubviews: [mapProgressLabel, levelButtonsStackView, aboutButton, resetButton])
+        // Map screen
+        let mapInnerStack = UIStackView(arrangedSubviews: [mapProgressLabel, levelButtonsStackView, castleButton, aboutButton, resetButton])
         mapInnerStack.translatesAutoresizingMaskIntoConstraints = false
         mapInnerStack.axis = .vertical
         mapInnerStack.spacing = 16
         mapInnerStack.alignment = .center
 
         mapContainerView.addSubview(mapInnerStack)
+
+        // Castle screen
+        let castleInnerStack = UIStackView(arrangedSubviews: [castleTitleLabel, castleStarsLabel, roomsStackView, castleBackButton])
+        castleInnerStack.translatesAutoresizingMaskIntoConstraints = false
+        castleInnerStack.axis = .vertical
+        castleInnerStack.spacing = 16
+        castleInnerStack.alignment = .fill
+
+        castleContainerView.addSubview(castleInnerStack)
 
         // Game screen
         let gameButtonsStack = UIStackView(arrangedSubviews: [shuffleButton, mapButton])
@@ -219,7 +297,7 @@ private extension ViewController {
         gameContainerView.addSubview(gameStack)
 
         // Main scroll view wrapping everything
-        let contentStack = UIStackView(arrangedSubviews: [titleLabel, subtitleLabel, mapContainerView, gameContainerView])
+        let contentStack = UIStackView(arrangedSubviews: [titleLabel, subtitleLabel, mapContainerView, castleContainerView, gameContainerView])
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         contentStack.axis = .vertical
         contentStack.spacing = 18
@@ -250,11 +328,19 @@ private extension ViewController {
             mapProgressLabel.leadingAnchor.constraint(equalTo: mapInnerStack.leadingAnchor),
             mapProgressLabel.trailingAnchor.constraint(equalTo: mapInnerStack.trailingAnchor),
 
+            castleButton.leadingAnchor.constraint(equalTo: mapInnerStack.leadingAnchor),
+            castleButton.trailingAnchor.constraint(equalTo: mapInnerStack.trailingAnchor),
+
             aboutButton.leadingAnchor.constraint(equalTo: mapInnerStack.leadingAnchor),
             aboutButton.trailingAnchor.constraint(equalTo: mapInnerStack.trailingAnchor),
 
             resetButton.leadingAnchor.constraint(equalTo: mapInnerStack.leadingAnchor),
             resetButton.trailingAnchor.constraint(equalTo: mapInnerStack.trailingAnchor),
+
+            castleInnerStack.topAnchor.constraint(equalTo: castleContainerView.topAnchor, constant: 20),
+            castleInnerStack.leadingAnchor.constraint(equalTo: castleContainerView.leadingAnchor, constant: 20),
+            castleInnerStack.trailingAnchor.constraint(equalTo: castleContainerView.trailingAnchor, constant: -20),
+            castleInnerStack.bottomAnchor.constraint(equalTo: castleContainerView.bottomAnchor, constant: -20),
 
             gameStack.topAnchor.constraint(equalTo: gameContainerView.topAnchor),
             gameStack.leadingAnchor.constraint(equalTo: gameContainerView.leadingAnchor),
@@ -308,6 +394,7 @@ private extension ViewController {
             view.removeFromSuperview()
         }
         levelButtons.removeAll()
+        levelStarLabels.removeAll()
 
         var currentRow: UIStackView?
         for (index, level) in levels.enumerated() {
@@ -319,6 +406,11 @@ private extension ViewController {
                 levelButtonsStackView.addArrangedSubview(row)
                 currentRow = row
             }
+
+            let cellStack = UIStackView()
+            cellStack.axis = .vertical
+            cellStack.spacing = 2
+            cellStack.alignment = .center
 
             let button = UIButton(type: .system)
             button.translatesAutoresizingMaskIntoConstraints = false
@@ -332,8 +424,17 @@ private extension ViewController {
             button.widthAnchor.constraint(equalToConstant: size).isActive = true
             button.heightAnchor.constraint(equalToConstant: size).isActive = true
 
-            currentRow?.addArrangedSubview(button)
+            let starLabel = UILabel()
+            starLabel.font = .systemFont(ofSize: 10)
+            starLabel.textAlignment = .center
+            starLabel.text = ""
+
+            cellStack.addArrangedSubview(button)
+            cellStack.addArrangedSubview(starLabel)
+
+            currentRow?.addArrangedSubview(cellStack)
             levelButtons.append(button)
+            levelStarLabels.append(starLabel)
         }
 
         let lastRowCount = levels.count % levelsPerRow
@@ -342,7 +443,13 @@ private extension ViewController {
                 let spacer = UIView()
                 spacer.translatesAutoresizingMaskIntoConstraints = false
                 spacer.widthAnchor.constraint(equalToConstant: 52).isActive = true
-                lastRow.addArrangedSubview(spacer)
+                let cellStack = UIStackView()
+                cellStack.axis = .vertical
+                cellStack.spacing = 2
+                cellStack.alignment = .center
+                cellStack.addArrangedSubview(spacer)
+                cellStack.addArrangedSubview(UILabel())
+                lastRow.addArrangedSubview(cellStack)
             }
         }
     }
@@ -352,18 +459,23 @@ private extension ViewController {
         shuffleButton.addTarget(self, action: #selector(didTapShuffle), for: .touchUpInside)
         mapButton.addTarget(self, action: #selector(didTapMap), for: .touchUpInside)
         resetButton.addTarget(self, action: #selector(didTapReset), for: .touchUpInside)
+        castleButton.addTarget(self, action: #selector(didTapCastle), for: .touchUpInside)
+        castleBackButton.addTarget(self, action: #selector(didTapCastleBack), for: .touchUpInside)
     }
 
     func showMapScreen() {
         mapContainerView.isHidden = false
+        castleContainerView.isHidden = true
         gameContainerView.isHidden = true
         subtitleLabel.text = "Выберите открытый уровень и начните прохождение."
 
         let unlockedCount = progressStore.unlockedLevelCount(totalLevels: levels.count)
-        mapProgressLabel.text = "Открыто уровней: \(unlockedCount) из \(levels.count)"
+        let totalStars = progressStore.totalStars(levelCount: levels.count)
+        mapProgressLabel.text = "Открыто уровней: \(unlockedCount) из \(levels.count)  |  ⭐ \(totalStars)"
 
         for (index, button) in levelButtons.enumerated() {
             let unlocked = index < unlockedCount
+            let stars = progressStore.stars(forLevel: index)
 
             if unlocked {
                 button.setTitle("\(index + 1)", for: .normal)
@@ -378,6 +490,12 @@ private extension ViewController {
                 button.layer.borderColor = UIColor.white.withAlphaComponent(0.2).cgColor
             }
 
+            if stars > 0 {
+                levelStarLabels[index].text = String(repeating: "⭐", count: stars)
+            } else {
+                levelStarLabels[index].text = ""
+            }
+
             button.configuration = nil
             button.isEnabled = unlocked
         }
@@ -385,6 +503,7 @@ private extension ViewController {
 
     func showGameScreen() {
         mapContainerView.isHidden = true
+        castleContainerView.isHidden = true
         gameContainerView.isHidden = false
         updateStatus(currentLevel.startMessage)
     }
@@ -616,18 +735,31 @@ private extension ViewController {
 
         if goalReached {
             isLevelFinished = true
+            let remainingMoves = max(currentLevel.goal.moveLimit - movesCount, 0)
+            let moveRatio = Double(remainingMoves) / Double(currentLevel.goal.moveLimit)
+            let stars: Int
+            if moveRatio >= 0.4 {
+                stars = 3
+            } else if moveRatio >= 0.15 {
+                stars = 2
+            } else {
+                stars = 1
+            }
+
             progressStore.unlockLevel(afterCompleting: currentLevelIndex, totalLevels: levels.count)
+            progressStore.saveStars(stars, forLevel: currentLevelIndex)
             SoundManager.play(.levelComplete)
 
+            let starsText = String(repeating: "⭐", count: stars)
             if currentLevelIndex + 1 < levels.count {
-                updateStatus("Уровень \(currentLevel.number) пройден! Очки: \(score).")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                updateStatus("Уровень \(currentLevel.number) пройден! \(starsText) Очки: \(score).")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
                     guard let self else { return }
                     self.startLevel(index: self.currentLevelIndex + 1)
                 }
             } else {
                 showCompletionAlert(
-                    title: "Победа",
+                    title: "Победа \(starsText)",
                     message: "Все уровни пройдены! Финальный счёт: \(score)."
                 )
             }
@@ -705,6 +837,16 @@ private extension ViewController {
     }
 
     @objc
+    func didTapCastle() {
+        showCastleScreen()
+    }
+
+    @objc
+    func didTapCastleBack() {
+        showMapScreen()
+    }
+
+    @objc
     func didTapReset() {
         let alert = UIAlertController(
             title: "Начать сначала?",
@@ -720,6 +862,79 @@ private extension ViewController {
             self.startLevel(index: 0)
         })
         present(alert, animated: true)
+    }
+
+    func showCastleScreen() {
+        mapContainerView.isHidden = true
+        castleContainerView.isHidden = false
+        gameContainerView.isHidden = true
+        subtitleLabel.text = "Оформляйте замок за звёзды"
+
+        let totalStars = progressStore.totalStars(levelCount: levels.count)
+        let spentStars = progressStore.spentStars()
+        let availableStars = totalStars - spentStars
+        castleStarsLabel.text = "Доступно звёзд: \(availableStars)  |  Всего: \(totalStars)"
+
+        buildRooms(availableStars: availableStars)
+    }
+
+    func buildRooms(availableStars: Int) {
+        roomsStackView.arrangedSubviews.forEach { v in
+            roomsStackView.removeArrangedSubview(v)
+            v.removeFromSuperview()
+        }
+        roomButtons.removeAll()
+
+        let rooms = CastleRoom.allRooms
+        for (index, room) in rooms.enumerated() {
+            let decorated = progressStore.isRoomDecorated(index: index)
+            let canAfford = availableStars >= room.cost
+
+            let button = UIButton(type: .system)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.tag = index
+            button.layer.cornerRadius = 14
+            button.clipsToBounds = true
+            button.heightAnchor.constraint(equalToConstant: 56).isActive = true
+
+            if decorated {
+                button.setTitle("\(room.icon) \(room.name) — Оформлено ✅", for: .normal)
+                button.setTitleColor(.white, for: .normal)
+                button.backgroundColor = UIColor(red: 0.2, green: 0.6, blue: 0.3, alpha: 1.0)
+                button.isEnabled = false
+            } else if canAfford {
+                button.setTitle("\(room.icon) \(room.name) — \(room.cost) ⭐", for: .normal)
+                button.setTitleColor(.white, for: .normal)
+                button.backgroundColor = UIColor(red: 0.85, green: 0.65, blue: 0.2, alpha: 1.0)
+                button.addTarget(self, action: #selector(didTapRoom(_:)), for: .touchUpInside)
+                button.isEnabled = true
+            } else {
+                button.setTitle("\(room.icon) \(room.name) — \(room.cost) ⭐", for: .normal)
+                button.setTitleColor(.white.withAlphaComponent(0.5), for: .normal)
+                button.backgroundColor = UIColor.white.withAlphaComponent(0.08)
+                button.isEnabled = false
+            }
+
+            button.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+            roomsStackView.addArrangedSubview(button)
+            roomButtons.append(button)
+        }
+    }
+
+    @objc
+    func didTapRoom(_ sender: UIButton) {
+        let index = sender.tag
+        let room = CastleRoom.allRooms[index]
+
+        let totalStars = progressStore.totalStars(levelCount: levels.count)
+        let spentStars = progressStore.spentStars()
+        let availableStars = totalStars - spentStars
+
+        guard availableStars >= room.cost else { return }
+
+        progressStore.decorateRoom(index: index, cost: room.cost)
+        SoundManager.play(.levelComplete)
+        showCastleScreen()
     }
 
     @objc
@@ -1222,6 +1437,22 @@ private struct TileDrop {
     let toRow: Int
 }
 
+private struct CastleRoom {
+    let name: String
+    let icon: String
+    let cost: Int
+
+    static let allRooms: [CastleRoom] = [
+        CastleRoom(name: "Тронный зал", icon: "👑", cost: 3),
+        CastleRoom(name: "Королевская спальня", icon: "🛏", cost: 4),
+        CastleRoom(name: "Банкетный зал", icon: "🍽", cost: 5),
+        CastleRoom(name: "Библиотека", icon: "📚", cost: 5),
+        CastleRoom(name: "Сад", icon: "🌺", cost: 6),
+        CastleRoom(name: "Башня мага", icon: "🧙", cost: 7),
+        CastleRoom(name: "Сокровищница", icon: "💰", cost: 8),
+    ]
+}
+
 private enum SoundManager {
     enum Sound {
         case tileSelect
@@ -1252,6 +1483,9 @@ private enum SoundManager {
 
 private struct ProgressStore {
     private let unlockedLevelKey = "royal.unlockedLevelIndex"
+    private let starsKeyPrefix = "royal.stars.level."
+    private let decoratedKeyPrefix = "royal.room.decorated."
+    private let spentStarsKey = "royal.spentStars"
 
     func restoredLevelIndex(maxIndex: Int) -> Int {
         let savedIndex = UserDefaults.standard.integer(forKey: unlockedLevelKey)
@@ -1268,7 +1502,40 @@ private struct ProgressStore {
         min(UserDefaults.standard.integer(forKey: unlockedLevelKey) + 1, totalLevels)
     }
 
+    func saveStars(_ stars: Int, forLevel index: Int) {
+        let key = starsKeyPrefix + "\(index)"
+        let current = UserDefaults.standard.integer(forKey: key)
+        UserDefaults.standard.set(max(current, stars), forKey: key)
+    }
+
+    func stars(forLevel index: Int) -> Int {
+        UserDefaults.standard.integer(forKey: starsKeyPrefix + "\(index)")
+    }
+
+    func totalStars(levelCount: Int) -> Int {
+        (0..<levelCount).reduce(0) { $0 + stars(forLevel: $1) }
+    }
+
+    func spentStars() -> Int {
+        UserDefaults.standard.integer(forKey: spentStarsKey)
+    }
+
+    func isRoomDecorated(index: Int) -> Bool {
+        UserDefaults.standard.bool(forKey: decoratedKeyPrefix + "\(index)")
+    }
+
+    func decorateRoom(index: Int, cost: Int) {
+        UserDefaults.standard.set(true, forKey: decoratedKeyPrefix + "\(index)")
+        let current = UserDefaults.standard.integer(forKey: spentStarsKey)
+        UserDefaults.standard.set(current + cost, forKey: spentStarsKey)
+    }
+
     func resetProgress() {
         UserDefaults.standard.set(0, forKey: unlockedLevelKey)
+        UserDefaults.standard.set(0, forKey: spentStarsKey)
+        for i in 0..<20 {
+            UserDefaults.standard.removeObject(forKey: starsKeyPrefix + "\(i)")
+            UserDefaults.standard.removeObject(forKey: decoratedKeyPrefix + "\(i)")
+        }
     }
 }
