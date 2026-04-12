@@ -74,6 +74,20 @@ final class ViewController: UIViewController {
         return button
     }()
 
+    private let soundToggleButton: UIButton = {
+        var configuration = UIButton.Configuration.tinted()
+        configuration.title = SoundManager.isMuted ? "🔇 Звук выкл" : "🔊 Звук вкл"
+        configuration.baseBackgroundColor = .white.withAlphaComponent(0.16)
+        configuration.baseForegroundColor = .white
+        configuration.cornerStyle = .large
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 20, bottom: 14, trailing: 20)
+
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.configuration = configuration
+        return button
+    }()
+
     private let resetButton: UIButton = {
         var configuration = UIButton.Configuration.tinted()
         configuration.title = "Начать сначала"
@@ -214,6 +228,20 @@ final class ViewController: UIViewController {
         return button
     }()
 
+    private let helpButton: UIButton = {
+        var configuration = UIButton.Configuration.tinted()
+        configuration.title = "❓"
+        configuration.baseBackgroundColor = .white.withAlphaComponent(0.16)
+        configuration.baseForegroundColor = .white
+        configuration.cornerStyle = .capsule
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14)
+
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.configuration = configuration
+        return button
+    }()
+
     private let mapButton: UIButton = {
         var configuration = UIButton.Configuration.tinted()
         configuration.title = "К карте уровней"
@@ -265,7 +293,7 @@ private extension ViewController {
 
     func layoutInterface() {
         // Map screen
-        let mapInnerStack = UIStackView(arrangedSubviews: [mapProgressLabel, levelButtonsStackView, castleButton, aboutButton, resetButton])
+        let mapInnerStack = UIStackView(arrangedSubviews: [mapProgressLabel, levelButtonsStackView, castleButton, soundToggleButton, aboutButton, resetButton])
         mapInnerStack.translatesAutoresizingMaskIntoConstraints = false
         mapInnerStack.axis = .vertical
         mapInnerStack.spacing = 16
@@ -288,9 +316,15 @@ private extension ViewController {
         gameButtonsStack.axis = .vertical
         gameButtonsStack.spacing = 14
 
+        let topGameBar = UIStackView(arrangedSubviews: [progressLabel, helpButton])
+        topGameBar.translatesAutoresizingMaskIntoConstraints = false
+        topGameBar.axis = .horizontal
+        topGameBar.spacing = 8
+        topGameBar.alignment = .center
+
         boardContainerView.addSubview(boardStackView)
 
-        let gameStack = UIStackView(arrangedSubviews: [progressLabel, statusLabel, boardContainerView, gameButtonsStack])
+        let gameStack = UIStackView(arrangedSubviews: [topGameBar, statusLabel, boardContainerView, gameButtonsStack])
         gameStack.translatesAutoresizingMaskIntoConstraints = false
         gameStack.axis = .vertical
         gameStack.spacing = 18
@@ -334,6 +368,9 @@ private extension ViewController {
 
             aboutButton.leadingAnchor.constraint(equalTo: mapInnerStack.leadingAnchor),
             aboutButton.trailingAnchor.constraint(equalTo: mapInnerStack.trailingAnchor),
+
+            soundToggleButton.leadingAnchor.constraint(equalTo: mapInnerStack.leadingAnchor),
+            soundToggleButton.trailingAnchor.constraint(equalTo: mapInnerStack.trailingAnchor),
 
             resetButton.leadingAnchor.constraint(equalTo: mapInnerStack.leadingAnchor),
             resetButton.trailingAnchor.constraint(equalTo: mapInnerStack.trailingAnchor),
@@ -460,6 +497,8 @@ private extension ViewController {
         shuffleButton.addTarget(self, action: #selector(didTapShuffle), for: .touchUpInside)
         mapButton.addTarget(self, action: #selector(didTapMap), for: .touchUpInside)
         resetButton.addTarget(self, action: #selector(didTapReset), for: .touchUpInside)
+        soundToggleButton.addTarget(self, action: #selector(didTapSoundToggle), for: .touchUpInside)
+        helpButton.addTarget(self, action: #selector(didTapHelp), for: .touchUpInside)
         castleButton.addTarget(self, action: #selector(didTapCastle), for: .touchUpInside)
         castleBackButton.addTarget(self, action: #selector(didTapCastleBack), for: .touchUpInside)
     }
@@ -941,6 +980,40 @@ private extension ViewController {
     @objc
     func didTapCastleBack() {
         showMapScreen()
+    }
+
+    @objc
+    func didTapHelp() {
+        let message = """
+        ФИШКИ:
+        👑 Корона  •  ♦️ Рубин  •  🛡 Щит
+        ⭐️ Звезда  •  🍀 Клевер
+        Совпадение 3+ в ряд — удаление.
+
+        СПЕЦ-ФИШКИ:
+        ➡️ Ракета → (4 в ряд ↔) — бьёт весь ряд
+        ⬆️ Ракета ↑ (4 в ряд ↕) — бьёт весь столбец
+        🧲 Магнит (L/T или 5+) — собирает все фишки того же цвета
+
+        ПРЕПЯТСТВИЯ:
+        ❄️ Лёд (1 слой) — 1 совпадение рядом разбивает
+        🧊 Лёд (2 слоя) — нужно 2 совпадения
+        ⛓️ Цепь — 1 совпадение рядом снимает
+        Блокируют обмен фишки.
+        """
+        let alert = UIAlertController(title: "Подсказка", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    @objc
+    func didTapSoundToggle() {
+        SoundManager.toggleMute()
+        let title = SoundManager.isMuted ? "🔇 Звук выкл" : "🔊 Звук вкл"
+        soundToggleButton.configuration?.title = title
+        if !SoundManager.isMuted {
+            SoundManager.play(.tileSelect)
+        }
     }
 
     @objc
@@ -1841,6 +1914,16 @@ private struct CastleRoom {
 }
 
 private enum SoundManager {
+    private static let muteKey = "royal.isMuted"
+
+    static var isMuted: Bool {
+        UserDefaults.standard.bool(forKey: muteKey)
+    }
+
+    static func toggleMute() {
+        UserDefaults.standard.set(!isMuted, forKey: muteKey)
+    }
+
     enum Sound {
         case tileSelect
         case matchRemove
@@ -1852,18 +1935,19 @@ private enum SoundManager {
 
         var systemSoundID: SystemSoundID {
             switch self {
-            case .tileSelect:       return 1104  // key press click
-            case .matchRemove:      return 1025  // short pop
-            case .powerUpCreated:   return 1054  // fanfare-like
-            case .powerUpActivated: return 1109  // swoosh
-            case .swapDenied:       return 1073  // negative beep
-            case .levelComplete:    return 1335  // success chime
-            case .levelFailed:      return 1257  // sad tone
+            case .tileSelect:       return 1104
+            case .matchRemove:      return 1025
+            case .powerUpCreated:   return 1054
+            case .powerUpActivated: return 1109
+            case .swapDenied:       return 1073
+            case .levelComplete:    return 1335
+            case .levelFailed:      return 1257
             }
         }
     }
 
     static func play(_ sound: Sound) {
+        guard !isMuted else { return }
         AudioServicesPlaySystemSound(sound.systemSoundID)
     }
 }
