@@ -908,17 +908,36 @@ private extension ViewController {
         if movesCount >= currentLevel.goal.moveLimit {
             isLevelFinished = true
             let details: String
+            let tip: String
             switch currentLevel.goal.type {
             case .collect(let kind, let count):
-                details = "Собрано \(collectedGoalTiles) из \(count) \(kind.symbol), очки: \(score)."
+                let remaining = count - collectedGoalTiles
+                details = "Собрано \(collectedGoalTiles) из \(count) \(kind.symbol)."
+                if remaining > 5 {
+                    tip = "Совет: создавайте магниты (L/T-комбо) — они собирают все фишки одного цвета."
+                } else {
+                    tip = "Совет: осталось немного! Ищите длинные цепочки из \(kind.symbol)."
+                }
             case .reachScore(let target):
+                let remaining = target - score
                 details = "Набрано \(score) из \(target) очков."
+                if remaining > 500 {
+                    tip = "Совет: ракеты и магниты дают больше очков. Старайтесь делать 4+ в ряд."
+                } else {
+                    tip = "Совет: почти получилось! Комбинируйте спец-фишки для мега-бонуса."
+                }
             case .clearObstacles(let count):
+                let remaining = count - clearedObstacles
                 details = "Разбито \(clearedObstacles) из \(count) препятствий."
+                if remaining > 3 {
+                    tip = "Совет: делайте совпадения рядом с препятствиями. Ракеты бьют целый ряд!"
+                } else {
+                    tip = "Совет: осталось \(remaining) преград. Цельтесь точнее!"
+                }
             }
             showCompletionAlert(
                 title: "Ходы закончились",
-                message: "Уровень \(currentLevel.number) не пройден. \(details)"
+                message: "Уровень \(currentLevel.number) не пройден.\n\n\(details)\n\n\(tip)"
             )
             SoundManager.play(.levelFailed)
         }
