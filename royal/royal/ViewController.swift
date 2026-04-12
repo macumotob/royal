@@ -271,6 +271,11 @@ final class ViewController: UIViewController {
     private var levelButtons: [UIButton] = []
     private var levelStarLabels: [UILabel] = []
     private let levelsPerRow = 5
+    
+    // Combo system
+    private var comboMultiplier = 1
+    private var lastMatchTime: Date?
+    private var lastMatchStepScore = 0
 
     private var currentLevel: LevelConfiguration {
         levels[currentLevelIndex]
@@ -628,7 +633,8 @@ private extension ViewController {
             progressLabel.text = "Цель: разбить \(count) препятствий  |  Разбито: \(clearedObstacles)"
         }
 
-        statusLabel.text = "Очки: \(score)  |  Ходы: \(remainingMoves)\n\(text)"
+        let comboText = comboMultiplier > 1 ? "  |  x\(comboMultiplier) комбо!" : ""
+        statusLabel.text = "Очки: \(score)  |  Ходы: \(remainingMoves)\n\(text)\(comboText)"
     }
 
     func startLevel(index: Int) {
@@ -641,6 +647,8 @@ private extension ViewController {
         clearedObstacles = 0
         isLevelFinished = false
         isResolvingMove = false
+        comboMultiplier = 1
+        lastMatchTime = nil
         renderBoard()
         showGameScreen()
     }
@@ -705,20 +713,47 @@ private extension ViewController {
         }
     }
 
+    func updateCombo() {
+        if let lastTime = lastMatchTime, Date().timeIntervalSince(lastTime) < 0.5 {
+            comboMultiplier = min(comboMultiplier + 1, 5)
+        } else {
+            comboMultiplier = 1
+        }
+        lastMatchTime = Date()
+    }
+
     func animateResolveChain(totalRemoved: Int, removedByKind: [TileKind: Int], totalClearedObstacles: Int = 0) {
         let matched = board.currentMatches()
         guard !matched.isEmpty else {
-            score += totalRemoved * 10
+            // Начисляем очки за этот шаг с учётом комбо
+            updateCombo()
+            let stepScore = totalRemoved * 10 * comboMultiplier
+            
+            // Бонус за уничтожение препятствий
+            let obstacleBonus = totalClearedObstacles * 15
+            let totalStepScore = stepScore + obstacleBonus
+            
+            score += totalStepScore
             clearedObstacles += totalClearedObstacles
+            
+            // Бонус за спец-фишки
+            if lastMatchStepScore > 0 {
+                score += lastMatchStepScore
+                lastMatchStepScore = 0
+            }
+            
             switch currentLevel.goal.type {
             case .collect(let kind, _):
                 collectedGoalTiles += removedByKind[kind, default: 0]
             case .reachScore, .clearObstacles:
                 break
             }
+            
             isResolvingMove = false
             renderBoard()
-            updateStatus("Совпадение найдено. Удалено фишек: \(totalRemoved).")
+            
+            let comboText = comboMultiplier > 1 ? " (x\(comboMultiplier) комбо!)" : ""
+            updateStatus("Совпадение найдено! +\(totalStepScore) очков\(comboText). Всего удалено фишек: \(totalRemoved).")
             evaluateLevelState()
             return
         }
@@ -777,11 +812,19 @@ private extension ViewController {
         removalSet.subtract(obstacleProtected)
 
         var updatedByKind = removedByKind
+        var powerUpBonus = 0
         for pos in removalSet {
             updatedByKind[board.tiles[pos.row][pos.column].kind, default: 0] += 1
+            
+            // Бонус за уничтожение фишек с power-up
+            if board.tiles[pos.row][pos.column].powerUp != .none {
+                powerUpBonus += 25
+            }
         }
         let updatedTotal = totalRemoved + removalSet.count
         let updatedClearedObstacles = totalClearedObstacles + stepClearedObstacles
+        
+        lastMatchStepScore = powerUpBonus
 
         animateRemoval(at: removalSet) { [weak self] in
             guard let self else { return }
@@ -841,24 +884,34 @@ private extension ViewController {
             completion()
             return
         }
-
-        UIView.animate(
-            withDuration: 0.35,
-            delay: 0,
-            usingSpringWithDamping: 0.7,
-            initialSpringVelocity: 0,
-            options: [],
-            animations: {
-                for drop in drops {
+        
+        let group = DispatchGroup()
+        
+        for drop in drops {
+            group.enter()
+            let distance = CGFloat(drop.toRow - drop.fromRow)
+            let duration = 0.2 + Double(abs(distance)) * 0.05 // Чем дальше, тем дольше
+            
+            UIView.animate(
+                withDuration: duration,
+                delay: 0,
+                usingSpringWithDamping: 0.7,
+                initialSpringVelocity: 0,
+                options: [],
+                animations: {
                     let button = self.tileButtons[drop.toRow][drop.column]
                     button.transform = .identity
                     button.alpha = 1
+                },
+                completion: { _ in
+                    group.leave()
                 }
-            },
-            completion: { _ in
-                completion()
-            }
-        )
+            )
+        }
+        
+        group.notify(queue: .main) {
+            completion()
+        }
     }
 
     func evaluateLevelState() {
@@ -1843,7 +1896,7 @@ private struct Match3Board {
             }
 
             let removedCount = size - remainingTiles.count
-
+            
             for (index, originalRow) in originalRows.enumerated() {
                 let newRow = removedCount + index
                 if newRow != originalRow {
@@ -1851,18 +1904,45 @@ private struct Match3Board {
                 }
             }
 
-            while remainingTiles.count < size {
-                let row = size - remainingTiles.count - 1
-                let forbidden = forbiddenKinds(row: row, column: column, currentColumn: remainingTiles)
-                remainingTiles.insert(Match3Tile(kind: Self.randomKind(avoiding: forbidden)), at: 0)
+            var newTiles: [Match3Tile] = []
+            let newCount = size - remainingTiles.count
+            
+            for newRow in 0..<newCount {
+                var forbidden = Set<TileKind>()
+                
+                if newRow >= 2 {
+                    let twoAbove = newTiles[newRow - 1].kind
+                    let oneAbove = newTiles[newRow - 2].kind
+                    if twoAbove == oneAbove {
+                        forbidden.insert(twoAbove)
+                    }
+                }
+                
+                if remainingTiles.count >= 2 {
+                    let firstBelow = remainingTiles[0].kind
+                    let secondBelow = remainingTiles[1].kind
+                    if firstBelow == secondBelow {
+                        forbidden.insert(firstBelow)
+                    }
+                }
+                
+                if column >= 2 {
+                    let left1 = column - 1 < size ? tiles[newRow][column - 1].kind : nil
+                    let left2 = column - 2 < size ? tiles[newRow][column - 2].kind : nil
+                    if let left1 = left1, let left2 = left2, left1 == left2 {
+                        forbidden.insert(left1)
+                    }
+                }
+                
+                let newKind = Self.randomKind(avoiding: forbidden)
+                newTiles.append(Match3Tile(kind: newKind))
+                drops.append(TileDrop(column: column, fromRow: -1, toRow: newRow))
             }
-
-            for row in 0..<removedCount {
-                drops.append(TileDrop(column: column, fromRow: row - removedCount, toRow: row))
-            }
-
+            
+            let allTiles = newTiles + remainingTiles
+            
             for row in 0..<size {
-                tiles[row][column] = remainingTiles[row]
+                tiles[row][column] = allTiles[row]
             }
         }
 
