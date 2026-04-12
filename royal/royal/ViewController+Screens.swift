@@ -171,14 +171,14 @@ extension ViewController {
 
         switch currentLevel.goal.type {
         case .collect(let kind, let count):
-            progressLabel.text = "Цель: собрать \(count) \(kind.symbol)  |  Собрано: \(collectedGoalTiles)"
+            progressLabel.text = "Цель: \(count) \(kind.symbol) за \(currentLevel.goal.moveLimit) ходов  |  Собрано: \(collectedGoalTiles)/\(count)"
         case .reachScore(let target):
-            progressLabel.text = "Цель: набрать \(target) очков  |  Набрано: \(score)"
+            progressLabel.text = "Цель: \(target) очков за \(currentLevel.goal.moveLimit) ходов  |  Набрано: \(score)/\(target)"
         case .clearObstacles(let count):
-            progressLabel.text = "Цель: разбить \(count) препятствий  |  Разбито: \(clearedObstacles)"
+            progressLabel.text = "Цель: разбить \(count) преград за \(currentLevel.goal.moveLimit) ходов  |  Разбито: \(clearedObstacles)/\(count)"
         }
 
         let comboText = comboMultiplier > 1 ? "  |  x\(comboMultiplier) комбо!" : ""
-        statusLabel.text = "Очки: \(score)  |  Ходы: \(remainingMoves)\n\(text)\(comboText)"
+        statusLabel.text = "Очки: \(score)  |  Ходов осталось: \(remainingMoves)\n\(text)\(comboText)"
     }
 }
