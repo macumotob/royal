@@ -185,6 +185,10 @@ extension ViewController {
                 powerUpBonus += 25
             }
         }
+        // Фишки на позициях спец-фишек тоже считаются собранными
+        for pos in spawnPositionSet {
+            updatedByKind[board.tiles[pos.row][pos.column].kind, default: 0] += 1
+        }
         let updatedTotal = totalRemoved + removalSet.count
         let updatedClearedObstacles = totalClearedObstacles + stepClearedObstacles
         
