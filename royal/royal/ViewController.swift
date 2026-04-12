@@ -259,6 +259,8 @@ final class ViewController: UIViewController {
     private var tileButtons: [[UIButton]] = []
     private var board = Match3Board(size: 6)
     private var selectedPosition: GridPosition?
+    private var swipeStartPoint: CGPoint?
+    private var swipeStartPosition: GridPosition?
     private var movesCount = 0
     private var score = 0
     private var collectedGoalTiles = 0
@@ -400,6 +402,9 @@ private extension ViewController {
             boardStackView.removeArrangedSubview(rowView)
             rowView.removeFromSuperview()
         }
+
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(didPanBoard(_:)))
+        boardStackView.addGestureRecognizer(panGesture)
 
         for row in 0..<boardSize {
             let rowStackView = UIStackView()
@@ -944,6 +949,57 @@ private extension ViewController {
     func didTapTile(_ sender: UIButton) {
         let position = GridPosition(row: sender.tag / boardSize, column: sender.tag % boardSize)
         handleSelection(at: position)
+    }
+
+    @objc
+    func didPanBoard(_ gesture: UIPanGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            let point = gesture.location(in: boardStackView)
+            swipeStartPoint = point
+            swipeStartPosition = positionFromPoint(point)
+        case .changed:
+            guard let startPoint = swipeStartPoint, let startPos = swipeStartPosition else { return }
+            let current = gesture.location(in: boardStackView)
+            let dx = current.x - startPoint.x
+            let dy = current.y - startPoint.y
+            let threshold: CGFloat = 20
+            guard max(abs(dx), abs(dy)) >= threshold else { return }
+
+            let targetPos: GridPosition
+            if abs(dx) > abs(dy) {
+                targetPos = GridPosition(row: startPos.row, column: startPos.column + (dx > 0 ? 1 : -1))
+            } else {
+                targetPos = GridPosition(row: startPos.row + (dy > 0 ? 1 : -1), column: startPos.column)
+            }
+
+            swipeStartPoint = nil
+            swipeStartPosition = nil
+
+            guard targetPos.row >= 0, targetPos.row < boardSize,
+                  targetPos.column >= 0, targetPos.column < boardSize else { return }
+
+            selectedPosition = startPos
+            handleSelection(at: targetPos)
+        case .ended, .cancelled:
+            swipeStartPoint = nil
+            swipeStartPosition = nil
+        default:
+            break
+        }
+    }
+
+    func positionFromPoint(_ point: CGPoint) -> GridPosition? {
+        for row in 0..<boardSize {
+            for col in 0..<boardSize {
+                let button = tileButtons[row][col]
+                let frame = button.convert(button.bounds, to: boardStackView)
+                if frame.contains(point) {
+                    return GridPosition(row: row, column: col)
+                }
+            }
+        }
+        return nil
     }
 
     @objc
