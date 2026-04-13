@@ -2,12 +2,6 @@ import UIKit
 
 extension ViewController {
     @objc
-    func didTapTile(_ sender: UIButton) {
-        let position = GridPosition(row: sender.tag / boardSize, column: sender.tag % boardSize)
-        handleSelection(at: position)
-    }
-
-    @objc
     func didPanBoard(_ gesture: UIPanGestureRecognizer) {
         switch gesture.state {
         case .began:
@@ -35,8 +29,7 @@ extension ViewController {
             guard targetPos.row >= 0, targetPos.row < boardSize,
                   targetPos.column >= 0, targetPos.column < boardSize else { return }
 
-            selectedPosition = startPos
-            handleSelection(at: targetPos)
+            handleSwap(from: startPos, to: targetPos)
         case .ended, .cancelled:
             swipeStartPoint = nil
             swipeStartPosition = nil

@@ -23,63 +23,33 @@ extension ViewController {
         }
     }
 
-    func handleSelection(at position: GridPosition) {
-        guard !isResolvingMove, !isLevelFinished else {
-            return
-        }
+    func handleSwap(from: GridPosition, to: GridPosition) {
+        guard !isResolvingMove, !isLevelFinished else { return }
 
-        guard let currentSelection = selectedPosition else {
-            selectedPosition = position
-            SoundManager.play(.tileSelect)
-            renderBoard()
-            updateStatus("Выбрана фишка. Нажмите соседнюю клетку для обмена.")
-            return
-        }
-
-        if currentSelection == position {
-            selectedPosition = nil
-            renderBoard()
-            updateStatus("Выбор снят.")
-            return
-        }
-
-        guard currentSelection.isAdjacent(to: position) else {
-            selectedPosition = position
-            renderBoard()
-            updateStatus("Можно менять только соседние фишки.")
-            return
-        }
-
-        selectedPosition = nil
-
-        if board.tiles[currentSelection.row][currentSelection.column].obstacle != .none
-            || board.tiles[position.row][position.column].obstacle != .none {
+        if board.tiles[from.row][from.column].obstacle != .none
+            || board.tiles[to.row][to.column].obstacle != .none {
             SoundManager.play(.swapDenied)
-            renderBoard()
-            updateStatus("Эта фишка заблокирована препятствием!")
             return
         }
 
         isResolvingMove = true
-        animateSwap(from: currentSelection, to: position) { [weak self] in
+        animateSwap(from: from, to: to) { [weak self] in
             guard let self else { return }
-            self.board.swapTiles(at: currentSelection, and: position)
+            self.board.swapTiles(at: from, and: to)
             self.renderBoard()
 
             if self.board.hasMatches() {
                 self.movesCount += 1
-                self.updateStatus("Фишки обменены. Проверяем совпадение...")
+                self.updateStatus("Проверяем совпадение...")
                 self.animateResolveChain(totalRemoved: 0, removedByKind: [:])
             } else {
-                self.updateStatus("Совпадения нет. Возвращаем фишки назад.")
                 SoundManager.play(.swapDenied)
 
-                self.animateSwap(from: currentSelection, to: position) { [weak self] in
+                self.animateSwap(from: from, to: to) { [weak self] in
                     guard let self else { return }
-                    self.board.swapTiles(at: currentSelection, and: position)
+                    self.board.swapTiles(at: from, and: to)
                     self.isResolvingMove = false
                     self.renderBoard()
-                    self.updateStatus("Совпадения нет. Обмен отменен.")
                 }
             }
         }

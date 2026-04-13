@@ -46,7 +46,7 @@ extension ViewController {
         gameContainerView.addSubview(gameStack)
 
         // Main scroll view wrapping everything
-        let contentStack = UIStackView(arrangedSubviews: [titleLabel, subtitleLabel, mapContainerView, castleContainerView, gameContainerView])
+        let contentStack = UIStackView(arrangedSubviews: [subtitleLabel, mapContainerView, castleContainerView, gameContainerView])
         contentStack.translatesAutoresizingMaskIntoConstraints = false
         contentStack.axis = .vertical
         contentStack.spacing = 18
@@ -133,7 +133,7 @@ extension ViewController {
                 button.layer.cornerRadius = 14
                 button.clipsToBounds = true
                 button.imageView?.contentMode = .scaleAspectFit
-                button.addTarget(self, action: #selector(didTapTile(_:)), for: .touchUpInside)
+                button.isUserInteractionEnabled = false
                 rowStackView.addArrangedSubview(button)
                 rowButtons.append(button)
             }
