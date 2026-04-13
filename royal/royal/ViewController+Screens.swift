@@ -104,38 +104,61 @@ extension ViewController {
     }
 
     func renderBoard() {
+        let gemSize: CGFloat = 60
+
         for row in 0..<boardSize {
             for column in 0..<boardSize {
                 let tile = board.tiles[row][column]
                 let button = tileButtons[row][column]
 
-                switch tile.powerUp {
-                case .none:
-                    button.setTitle(tile.kind.symbol, for: .normal)
-                case .rocketHorizontal:
-                    button.setTitle("➡️", for: .normal)
-                case .rocketVertical:
-                    button.setTitle("⬆️", for: .normal)
-                case .bomb:
-                    button.setTitle("💣", for: .normal)
-                case .magnet:
-                    button.setTitle("🧲", for: .normal)
-                }
-
-                button.backgroundColor = tile.kind.color
+                button.setTitle(nil, for: .normal)
+                button.backgroundColor = .clear
                 button.transform = .identity
 
-                switch tile.obstacle {
-                case .ice(let hits):
-                    button.setTitle(hits > 1 ? "🧊" : "❄️", for: .normal)
-                    button.backgroundColor = tile.kind.color.withAlphaComponent(0.5)
-                case .chain:
-                    button.setTitle("⛓️", for: .normal)
-                    button.backgroundColor = tile.kind.color.withAlphaComponent(0.5)
-                case .none:
-                    break
+                // Remove old overlay views (tagged 100 for power-up, 101 for obstacle)
+                button.viewWithTag(100)?.removeFromSuperview()
+                button.viewWithTag(101)?.removeFromSuperview()
+
+                // Gem image
+                let gemImg = GemRenderer.shared.gemImage(for: tile.kind, size: gemSize)
+                button.setImage(gemImg, for: .normal)
+                button.imageView?.contentMode = .scaleAspectFit
+
+                // Power-up overlay
+                if tile.powerUp != .none, tile.obstacle == .none,
+                   let puImg = GemRenderer.shared.powerUpImage(for: tile.powerUp, size: gemSize) {
+                    let overlay = UIImageView(image: puImg)
+                    overlay.tag = 100
+                    overlay.contentMode = .scaleAspectFit
+                    overlay.translatesAutoresizingMaskIntoConstraints = false
+                    overlay.isUserInteractionEnabled = false
+                    button.addSubview(overlay)
+                    NSLayoutConstraint.activate([
+                        overlay.centerXAnchor.constraint(equalTo: button.centerXAnchor),
+                        overlay.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+                        overlay.widthAnchor.constraint(equalTo: button.widthAnchor, multiplier: 0.7),
+                        overlay.heightAnchor.constraint(equalTo: button.heightAnchor, multiplier: 0.7)
+                    ])
                 }
 
+                // Obstacle overlay
+                if tile.obstacle != .none,
+                   let obsImg = GemRenderer.shared.obstacleImage(for: tile.obstacle, size: gemSize) {
+                    let overlay = UIImageView(image: obsImg)
+                    overlay.tag = 101
+                    overlay.contentMode = .scaleAspectFit
+                    overlay.translatesAutoresizingMaskIntoConstraints = false
+                    overlay.isUserInteractionEnabled = false
+                    button.addSubview(overlay)
+                    NSLayoutConstraint.activate([
+                        overlay.centerXAnchor.constraint(equalTo: button.centerXAnchor),
+                        overlay.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+                        overlay.widthAnchor.constraint(equalTo: button.widthAnchor),
+                        overlay.heightAnchor.constraint(equalTo: button.heightAnchor)
+                    ])
+                }
+
+                // Selection / border state
                 let isSelected = selectedPosition == GridPosition(row: row, column: column)
                 let hasPowerUp = tile.powerUp != .none
                 let hasObstacle = tile.obstacle != .none

@@ -127,12 +127,12 @@ extension ViewController {
             var rowButtons: [UIButton] = []
 
             for column in 0..<boardSize {
-                let button = UIButton(type: .system)
+                let button = UIButton(type: .custom)
                 button.translatesAutoresizingMaskIntoConstraints = false
                 button.tag = row * boardSize + column
                 button.layer.cornerRadius = 14
-                button.setTitleColor(.white, for: .normal)
-                button.titleLabel?.font = .systemFont(ofSize: 28, weight: .bold)
+                button.clipsToBounds = true
+                button.imageView?.contentMode = .scaleAspectFit
                 button.addTarget(self, action: #selector(didTapTile(_:)), for: .touchUpInside)
                 rowStackView.addArrangedSubview(button)
                 rowButtons.append(button)
