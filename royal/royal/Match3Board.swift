@@ -276,6 +276,69 @@ struct Match3Board {
         }
     }
 
+    func hasAvailableMoves() -> Bool {
+        var copy = self
+        for row in 0..<size {
+            for col in 0..<size {
+                guard tiles[row][col].obstacle == .none else { continue }
+                let pos = GridPosition(row: row, column: col)
+                for (dr, dc) in [(0, 1), (1, 0)] {
+                    let nr = row + dr
+                    let nc = col + dc
+                    guard nr < size, nc < size else { continue }
+                    guard tiles[nr][nc].obstacle == .none else { continue }
+                    let neighbor = GridPosition(row: nr, column: nc)
+                    copy.swapTilesInPlace(pos, neighbor)
+                    let found = !copy.allMatches().isEmpty
+                    copy.swapTilesInPlace(pos, neighbor)
+                    if found { return true }
+                }
+            }
+        }
+        return false
+    }
+
+    mutating func shuffle() {
+        var positions: [GridPosition] = []
+        for row in 0..<size {
+            for col in 0..<size {
+                if tiles[row][col].obstacle == .none {
+                    positions.append(GridPosition(row: row, column: col))
+                }
+            }
+        }
+
+        for attempt in 0..<100 {
+            var kinds = positions.map { tiles[$0.row][$0.column].kind }
+            kinds.shuffle()
+            for (i, pos) in positions.enumerated() {
+                tiles[pos.row][pos.column] = Match3Tile(
+                    kind: kinds[i],
+                    powerUp: tiles[pos.row][pos.column].powerUp
+                )
+            }
+            if allMatches().isEmpty && hasAvailableMoves() {
+                return
+            }
+            if attempt == 99 {
+                // Fallback: regenerate like a fresh board
+                for pos in positions {
+                    let forbidden = forbiddenKinds(row: pos.row, column: pos.column)
+                    tiles[pos.row][pos.column] = Match3Tile(
+                        kind: Self.randomKind(avoiding: forbidden),
+                        powerUp: tiles[pos.row][pos.column].powerUp
+                    )
+                }
+            }
+        }
+    }
+
+    private mutating func swapTilesInPlace(_ a: GridPosition, _ b: GridPosition) {
+        let tmp = tiles[a.row][a.column]
+        tiles[a.row][a.column] = tiles[b.row][b.column]
+        tiles[b.row][b.column] = tmp
+    }
+
     private func allMatches() -> Set<GridPosition> {
         var positions = Set<GridPosition>()
         for run in allMatchRuns() {

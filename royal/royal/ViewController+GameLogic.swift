@@ -15,6 +15,12 @@ extension ViewController {
         lastMatchTime = nil
         renderBoard()
         showGameScreen()
+
+        // Ensure the initial board has available moves
+        if !board.hasAvailableMoves() {
+            board.shuffle()
+            renderBoard()
+        }
     }
 
     func handleSelection(at position: GridPosition) {
@@ -54,25 +60,27 @@ extension ViewController {
             return
         }
 
-        board.swapTiles(at: currentSelection, and: position)
-        renderBoard()
+        isResolvingMove = true
+        animateSwap(from: currentSelection, to: position) { [weak self] in
+            guard let self else { return }
+            self.board.swapTiles(at: currentSelection, and: position)
+            self.renderBoard()
 
-        if board.hasMatches() {
-            isResolvingMove = true
-            movesCount += 1
-            updateStatus("Фишки обменены. Проверяем совпадение...")
-            animateResolveChain(totalRemoved: 0, removedByKind: [:])
-        } else {
-            isResolvingMove = true
-            updateStatus("Совпадения нет. Возвращаем фишки назад.")
-            SoundManager.play(.swapDenied)
+            if self.board.hasMatches() {
+                self.movesCount += 1
+                self.updateStatus("Фишки обменены. Проверяем совпадение...")
+                self.animateResolveChain(totalRemoved: 0, removedByKind: [:])
+            } else {
+                self.updateStatus("Совпадения нет. Возвращаем фишки назад.")
+                SoundManager.play(.swapDenied)
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                guard let self else { return }
-                self.board.swapTiles(at: currentSelection, and: position)
-                self.isResolvingMove = false
-                self.renderBoard()
-                self.updateStatus("Совпадения нет. Обмен отменен.")
+                self.animateSwap(from: currentSelection, to: position) { [weak self] in
+                    guard let self else { return }
+                    self.board.swapTiles(at: currentSelection, and: position)
+                    self.isResolvingMove = false
+                    self.renderBoard()
+                    self.updateStatus("Совпадения нет. Обмен отменен.")
+                }
             }
         }
     }
@@ -115,10 +123,14 @@ extension ViewController {
             
             isResolvingMove = false
             renderBoard()
-            
+
             let comboText = comboMultiplier > 1 ? " (x\(comboMultiplier) комбо!)" : ""
             updateStatus("Совпадение найдено! +\(totalStepScore) очков\(comboText). Всего удалено фишек: \(totalRemoved).")
             evaluateLevelState()
+
+            if !isLevelFinished {
+                checkForAvailableMoves()
+            }
             return
         }
 
@@ -221,6 +233,43 @@ extension ViewController {
                 self.animateResolveChain(totalRemoved: updatedTotal, removedByKind: updatedByKind, totalClearedObstacles: updatedClearedObstacles)
             }
         }
+    }
+
+    func animateSwap(from a: GridPosition, to b: GridPosition, completion: @escaping () -> Void) {
+        let buttonA = tileButtons[a.row][a.column]
+        let buttonB = tileButtons[b.row][b.column]
+
+        let centerA = buttonA.center
+        let centerB = buttonB.center
+
+        // Convert centers to the common superview coordinate space
+        guard let parentA = buttonA.superview, let parentB = buttonB.superview else {
+            completion()
+            return
+        }
+
+        let globalA = parentA.convert(centerA, to: boardStackView)
+        let globalB = parentB.convert(centerB, to: boardStackView)
+
+        let dx = globalB.x - globalA.x
+        let dy = globalB.y - globalA.y
+
+        UIView.animate(
+            withDuration: 0.25,
+            delay: 0,
+            usingSpringWithDamping: 0.85,
+            initialSpringVelocity: 0,
+            options: [],
+            animations: {
+                buttonA.transform = CGAffineTransform(translationX: dx, y: dy)
+                buttonB.transform = CGAffineTransform(translationX: -dx, y: -dy)
+            },
+            completion: { _ in
+                buttonA.transform = .identity
+                buttonB.transform = .identity
+                completion()
+            }
+        )
     }
 
     func animateRemoval(at positions: Set<GridPosition>, completion: @escaping () -> Void) {
@@ -362,6 +411,43 @@ extension ViewController {
             )
             SoundManager.play(.levelFailed)
         }
+    }
+
+    func checkForAvailableMoves() {
+        guard !board.hasAvailableMoves() else { return }
+        isResolvingMove = true
+        updateStatus("Нет доступных ходов! Перемешиваем поле...")
+
+        UIView.animate(withDuration: 0.3, animations: {
+            for row in 0..<self.boardSize {
+                for col in 0..<self.boardSize {
+                    self.tileButtons[row][col].transform = CGAffineTransform(scaleX: 0.01, y: 0.01)
+                    self.tileButtons[row][col].alpha = 0
+                }
+            }
+        }, completion: { _ in
+            self.board.shuffle()
+            self.renderBoard()
+
+            for row in 0..<self.boardSize {
+                for col in 0..<self.boardSize {
+                    self.tileButtons[row][col].transform = CGAffineTransform(scaleX: 0.01, y: 0.01)
+                    self.tileButtons[row][col].alpha = 0
+                }
+            }
+
+            UIView.animate(withDuration: 0.3, animations: {
+                for row in 0..<self.boardSize {
+                    for col in 0..<self.boardSize {
+                        self.tileButtons[row][col].transform = .identity
+                        self.tileButtons[row][col].alpha = 1
+                    }
+                }
+            }, completion: { _ in
+                self.isResolvingMove = false
+                self.updateStatus("Поле перемешано! Продолжайте играть.")
+            })
+        })
     }
 
     func showCompletionAlert(title: String, message: String) {
