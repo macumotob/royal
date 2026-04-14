@@ -421,37 +421,27 @@ extension ViewController {
     func checkForAvailableMoves() {
         guard !board.hasAvailableMoves() else { return }
         isResolvingMove = true
-        updateStatus("Нет доступных ходов! Перемешиваем поле...")
 
-        UIView.animate(withDuration: 0.3, animations: {
+        board.shuffle()
+        renderBoard()
+
+        for row in 0..<boardSize {
+            for col in 0..<boardSize {
+                let button = tileButtons[row][col]
+                button.alpha = 0.4
+                button.transform = CGAffineTransform(scaleX: 0.85, y: 0.85)
+            }
+        }
+
+        UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.8, initialSpringVelocity: 0, options: [], animations: {
             for row in 0..<self.boardSize {
                 for col in 0..<self.boardSize {
-                    self.tileButtons[row][col].transform = CGAffineTransform(scaleX: 0.01, y: 0.01)
-                    self.tileButtons[row][col].alpha = 0
+                    self.tileButtons[row][col].transform = .identity
+                    self.tileButtons[row][col].alpha = 1
                 }
             }
         }, completion: { _ in
-            self.board.shuffle()
-            self.renderBoard()
-
-            for row in 0..<self.boardSize {
-                for col in 0..<self.boardSize {
-                    self.tileButtons[row][col].transform = CGAffineTransform(scaleX: 0.01, y: 0.01)
-                    self.tileButtons[row][col].alpha = 0
-                }
-            }
-
-            UIView.animate(withDuration: 0.3, animations: {
-                for row in 0..<self.boardSize {
-                    for col in 0..<self.boardSize {
-                        self.tileButtons[row][col].transform = .identity
-                        self.tileButtons[row][col].alpha = 1
-                    }
-                }
-            }, completion: { _ in
-                self.isResolvingMove = false
-                self.updateStatus("Поле перемешано! Продолжайте играть.")
-            })
+            self.isResolvingMove = false
         })
     }
 
