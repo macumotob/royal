@@ -9,13 +9,33 @@ struct Match3Board {
             count: size
         )
 
+        // Place stone obstacles first (they occupy 2x2)
+        var stonePositions = Set<GridPosition>()
+        for (pos, obstacle) in obstacles {
+            if case .stone(let hits, let origin) = obstacle {
+                for dr in 0..<2 {
+                    for dc in 0..<2 {
+                        let r = origin.row + dr
+                        let c = origin.column + dc
+                        guard r >= 0, r < size, c >= 0, c < size else { continue }
+                        let gp = GridPosition(row: r, column: c)
+                        stonePositions.insert(gp)
+                        tiles[r][c].obstacle = .stone(hits: hits, origin: origin)
+                    }
+                }
+            }
+        }
+
         for row in 0..<size {
             for column in 0..<size {
+                let gp = GridPosition(row: row, column: column)
+                guard !stonePositions.contains(gp) else { continue }
                 tiles[row][column] = Match3Tile(kind: Self.randomKind(avoiding: forbiddenKinds(row: row, column: column)))
             }
         }
 
         for (pos, obstacle) in obstacles {
+            if case .stone = obstacle { continue }
             if pos.row >= 0, pos.row < size, pos.column >= 0, pos.column < size {
                 tiles[pos.row][pos.column].obstacle = obstacle
             }
@@ -46,9 +66,14 @@ struct Match3Board {
         for row in 0..<size {
             var startColumn = 0
             while startColumn < size {
+                // Skip stone cells
+                if tiles[row][startColumn].obstacle.isStone {
+                    startColumn += 1
+                    continue
+                }
                 let kind = tiles[row][startColumn].kind
                 var endColumn = startColumn + 1
-                while endColumn < size, tiles[row][endColumn].kind == kind {
+                while endColumn < size, !tiles[row][endColumn].obstacle.isStone, tiles[row][endColumn].kind == kind {
                     endColumn += 1
                 }
                 if endColumn - startColumn >= 3 {
@@ -65,9 +90,14 @@ struct Match3Board {
         for column in 0..<size {
             var startRow = 0
             while startRow < size {
+                // Skip stone cells
+                if tiles[startRow][column].obstacle.isStone {
+                    startRow += 1
+                    continue
+                }
                 let kind = tiles[startRow][column].kind
                 var endRow = startRow + 1
-                while endRow < size, tiles[endRow][column].kind == kind {
+                while endRow < size, !tiles[endRow][column].obstacle.isStone, tiles[endRow][column].kind == kind {
                     endRow += 1
                 }
                 if endRow - startRow >= 3 {
@@ -176,62 +206,119 @@ struct Match3Board {
         var drops: [TileDrop] = []
 
         for column in 0..<size {
-            var remainingTiles: [Match3Tile] = []
-            var originalRows: [Int] = []
-
-            for row in 0..<size where !matchedPositions.contains(GridPosition(row: row, column: column)) {
-                remainingTiles.append(tiles[row][column])
-                originalRows.append(row)
-            }
-
-            let removedCount = size - remainingTiles.count
-            
-            for (index, originalRow) in originalRows.enumerated() {
-                let newRow = removedCount + index
-                if newRow != originalRow {
-                    drops.append(TileDrop(column: column, fromRow: originalRow, toRow: newRow))
-                }
-            }
-
-            var newTiles: [Match3Tile] = []
-            let newCount = size - remainingTiles.count
-            
-            for newRow in 0..<newCount {
-                var forbidden = Set<TileKind>()
-                
-                if newRow >= 2 {
-                    let twoAbove = newTiles[newRow - 1].kind
-                    let oneAbove = newTiles[newRow - 2].kind
-                    if twoAbove == oneAbove {
-                        forbidden.insert(twoAbove)
-                    }
-                }
-                
-                if remainingTiles.count >= 2 {
-                    let firstBelow = remainingTiles[0].kind
-                    let secondBelow = remainingTiles[1].kind
-                    if firstBelow == secondBelow {
-                        forbidden.insert(firstBelow)
-                    }
-                }
-                
-                if column >= 2 {
-                    let left1 = column - 1 < size ? tiles[newRow][column - 1].kind : nil
-                    let left2 = column - 2 < size ? tiles[newRow][column - 2].kind : nil
-                    if let left1 = left1, let left2 = left2, left1 == left2 {
-                        forbidden.insert(left1)
-                    }
-                }
-                
-                let newKind = Self.randomKind(avoiding: forbidden)
-                newTiles.append(Match3Tile(kind: newKind))
-                drops.append(TileDrop(column: column, fromRow: -1, toRow: newRow))
-            }
-            
-            let allTiles = newTiles + remainingTiles
-            
+            // Identify stone rows in this column (they stay fixed)
+            var stoneRows = Set<Int>()
             for row in 0..<size {
-                tiles[row][column] = allTiles[row]
+                if tiles[row][column].obstacle.isStone {
+                    stoneRows.insert(row)
+                }
+            }
+
+            // If no stones, use simple drop logic
+            if stoneRows.isEmpty {
+                var remainingTiles: [Match3Tile] = []
+                var originalRows: [Int] = []
+
+                for row in 0..<size where !matchedPositions.contains(GridPosition(row: row, column: column)) {
+                    remainingTiles.append(tiles[row][column])
+                    originalRows.append(row)
+                }
+
+                let removedCount = size - remainingTiles.count
+                
+                for (index, originalRow) in originalRows.enumerated() {
+                    let newRow = removedCount + index
+                    if newRow != originalRow {
+                        drops.append(TileDrop(column: column, fromRow: originalRow, toRow: newRow))
+                    }
+                }
+
+                var newTiles: [Match3Tile] = []
+                let newCount = size - remainingTiles.count
+                
+                for newRow in 0..<newCount {
+                    var forbidden = Set<TileKind>()
+                    
+                    if newRow >= 2 {
+                        let twoAbove = newTiles[newRow - 1].kind
+                        let oneAbove = newTiles[newRow - 2].kind
+                        if twoAbove == oneAbove {
+                            forbidden.insert(twoAbove)
+                        }
+                    }
+                    
+                    if remainingTiles.count >= 2 {
+                        let firstBelow = remainingTiles[0].kind
+                        let secondBelow = remainingTiles[1].kind
+                        if firstBelow == secondBelow {
+                            forbidden.insert(firstBelow)
+                        }
+                    }
+                    
+                    if column >= 2 {
+                        let left1 = column - 1 < size ? tiles[newRow][column - 1].kind : nil
+                        let left2 = column - 2 < size ? tiles[newRow][column - 2].kind : nil
+                        if let left1 = left1, let left2 = left2, left1 == left2 {
+                            forbidden.insert(left1)
+                        }
+                    }
+                    
+                    let newKind = Self.randomKind(avoiding: forbidden)
+                    newTiles.append(Match3Tile(kind: newKind))
+                    drops.append(TileDrop(column: column, fromRow: -1, toRow: newRow))
+                }
+                
+                let allTiles = newTiles + remainingTiles
+                
+                for row in 0..<size {
+                    tiles[row][column] = allTiles[row]
+                }
+            } else {
+                // With stones: process segments between stones independently
+                // Segments are ranges of rows that are NOT stone rows
+                // Tiles drop within each segment, new tiles fill from top of segment
+                var segments: [(start: Int, end: Int)] = []
+                var segStart: Int? = nil
+                for row in 0...size {
+                    if row < size && !stoneRows.contains(row) {
+                        if segStart == nil { segStart = row }
+                    } else {
+                        if let s = segStart {
+                            segments.append((start: s, end: row - 1))
+                            segStart = nil
+                        }
+                    }
+                }
+
+                for seg in segments {
+                    var remaining: [(tile: Match3Tile, origRow: Int)] = []
+                    for row in seg.start...seg.end {
+                        if !matchedPositions.contains(GridPosition(row: row, column: column)) {
+                            remaining.append((tile: tiles[row][column], origRow: row))
+                        }
+                    }
+                    let segLen = seg.end - seg.start + 1
+                    let removedInSeg = segLen - remaining.count
+
+                    for (index, item) in remaining.enumerated() {
+                        let newRow = seg.start + removedInSeg + index
+                        if newRow != item.origRow {
+                            drops.append(TileDrop(column: column, fromRow: item.origRow, toRow: newRow))
+                        }
+                    }
+
+                    for i in 0..<removedInSeg {
+                        let newRow = seg.start + i
+                        let forbidden = forbiddenKinds(row: newRow, column: column)
+                        let newKind = Self.randomKind(avoiding: forbidden)
+                        tiles[newRow][column] = Match3Tile(kind: newKind)
+                        drops.append(TileDrop(column: column, fromRow: -1, toRow: newRow))
+                    }
+                    for (index, item) in remaining.enumerated() {
+                        let newRow = seg.start + removedInSeg + index
+                        tiles[newRow][column] = item.tile
+                    }
+                }
             }
         }
 
@@ -308,7 +395,10 @@ struct Match3Board {
             }
         }
 
-        for attempt in 0..<100 {
+        guard !positions.isEmpty else { return }
+
+        // Phase 1: try shuffling existing kinds (preserves distribution)
+        for _ in 0..<100 {
             var kinds = positions.map { tiles[$0.row][$0.column].kind }
             kinds.shuffle()
             for (i, pos) in positions.enumerated() {
@@ -320,14 +410,31 @@ struct Match3Board {
             if allMatches().isEmpty && hasAvailableMoves() {
                 return
             }
-            if attempt == 99 {
-                // Fallback: regenerate like a fresh board
-                for pos in positions {
-                    let forbidden = forbiddenKinds(row: pos.row, column: pos.column)
-                    tiles[pos.row][pos.column] = Match3Tile(
-                        kind: Self.randomKind(avoiding: forbidden),
-                        powerUp: tiles[pos.row][pos.column].powerUp
-                    )
+        }
+
+        // Phase 2: regenerate with fresh random kinds until valid
+        for _ in 0..<200 {
+            for pos in positions {
+                let forbidden = forbiddenKinds(row: pos.row, column: pos.column)
+                tiles[pos.row][pos.column] = Match3Tile(
+                    kind: Self.randomKind(avoiding: forbidden),
+                    powerUp: tiles[pos.row][pos.column].powerUp
+                )
+            }
+            if hasAvailableMoves() {
+                // Resolve any accidental matches silently
+                while !allMatches().isEmpty {
+                    let matched = allMatches()
+                    for pos in matched where positions.contains(pos) {
+                        let forbidden = forbiddenKinds(row: pos.row, column: pos.column)
+                        tiles[pos.row][pos.column] = Match3Tile(
+                            kind: Self.randomKind(avoiding: forbidden),
+                            powerUp: tiles[pos.row][pos.column].powerUp
+                        )
+                    }
+                }
+                if hasAvailableMoves() {
+                    return
                 }
             }
         }
@@ -337,6 +444,46 @@ struct Match3Board {
         let tmp = tiles[a.row][a.column]
         tiles[a.row][a.column] = tiles[b.row][b.column]
         tiles[b.row][b.column] = tmp
+    }
+
+    /// Returns all 4 positions of a stone given its origin (top-left corner).
+    func stonePositions(origin: GridPosition) -> [GridPosition] {
+        var positions: [GridPosition] = []
+        for dr in 0..<2 {
+            for dc in 0..<2 {
+                let r = origin.row + dr
+                let c = origin.column + dc
+                if r >= 0, r < size, c >= 0, c < size {
+                    positions.append(GridPosition(row: r, column: c))
+                }
+            }
+        }
+        return positions
+    }
+
+    /// Damage a stone at the given origin. Returns number of cleared obstacles (4 if destroyed, 0 otherwise).
+    mutating func damageStone(origin: GridPosition) -> Int {
+        let topLeft = origin
+        guard topLeft.row >= 0, topLeft.row < size, topLeft.column >= 0, topLeft.column < size else { return 0 }
+        guard case .stone(let hits, let orig) = tiles[topLeft.row][topLeft.column].obstacle, orig == topLeft else { return 0 }
+
+        if hits <= 1 {
+            // Destroy stone — clear all 4 cells
+            for pos in stonePositions(origin: origin) {
+                tiles[pos.row][pos.column].obstacle = .none
+                tiles[pos.row][pos.column] = Match3Tile(
+                    kind: Self.randomKind(avoiding: forbiddenKinds(row: pos.row, column: pos.column))
+                )
+            }
+            return 1
+        } else {
+            // Reduce hits on all 4 cells
+            let newHits = hits - 1
+            for pos in stonePositions(origin: origin) {
+                tiles[pos.row][pos.column].obstacle = .stone(hits: newHits, origin: origin)
+            }
+            return 0
+        }
     }
 
     private func allMatches() -> Set<GridPosition> {

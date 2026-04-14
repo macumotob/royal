@@ -27,6 +27,13 @@ enum Obstacle: Equatable {
     case none
     case ice(hits: Int)
     case chain
+    /// Stone occupies a 2×2 area. `origin` is the top-left GridPosition. `hits` is remaining HP.
+    case stone(hits: Int, origin: GridPosition)
+
+    var isStone: Bool {
+        if case .stone = self { return true }
+        return false
+    }
 }
 
 enum RunDirection {

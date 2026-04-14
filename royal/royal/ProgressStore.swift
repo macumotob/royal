@@ -5,6 +5,26 @@ struct ProgressStore {
     private let starsKeyPrefix = "royal.stars.level."
     private let decoratedKeyPrefix = "royal.room.decorated."
     private let spentStarsKey = "royal.spentStars"
+    private let failCountKeyPrefix = "royal.failCount.level."
+
+    func failCount(forLevel index: Int) -> Int {
+        UserDefaults.standard.integer(forKey: failCountKeyPrefix + "\(index)")
+    }
+
+    func incrementFailCount(forLevel index: Int) {
+        let key = failCountKeyPrefix + "\(index)"
+        let current = UserDefaults.standard.integer(forKey: key)
+        UserDefaults.standard.set(current + 1, forKey: key)
+    }
+
+    func resetFailCount(forLevel index: Int) {
+        UserDefaults.standard.removeObject(forKey: failCountKeyPrefix + "\(index)")
+    }
+
+    /// Bonus moves granted for repeated failures (every 10 fails → +2 moves)
+    func bonusMoves(forLevel index: Int) -> Int {
+        (failCount(forLevel: index) / 10) * 2
+    }
 
     func restoredLevelIndex(maxIndex: Int) -> Int {
         let savedIndex = UserDefaults.standard.integer(forKey: unlockedLevelKey)
@@ -55,6 +75,7 @@ struct ProgressStore {
         for i in 0..<40 {
             UserDefaults.standard.removeObject(forKey: starsKeyPrefix + "\(i)")
             UserDefaults.standard.removeObject(forKey: decoratedKeyPrefix + "\(i)")
+            UserDefaults.standard.removeObject(forKey: failCountKeyPrefix + "\(i)")
         }
     }
 }

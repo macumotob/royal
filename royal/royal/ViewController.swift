@@ -280,6 +280,10 @@ final class ViewController: UIViewController {
   var currentLevel: LevelConfiguration {
     levels[currentLevelIndex]
   }
+
+  var effectiveMoveLimit: Int {
+    currentLevel.goal.moveLimit + progressStore.bonusMoves(forLevel: currentLevelIndex)
+  }
   
   override func viewDidLoad() {
     super.viewDidLoad()

@@ -31,6 +31,17 @@ final class GemRenderer {
         return image
     }
 
+    /// Returns a 2×2 stone image. `size` is the size of one cell; the image is 2×size by 2×size.
+    func stoneImage(hits: Int, cellSize: CGFloat, spacing: CGFloat) -> UIImage {
+        let totalW = cellSize * 2 + spacing
+        let totalH = cellSize * 2 + spacing
+        let key = "stone-\(hits)-\(cellSize)-\(spacing)"
+        if let cached = cache[key] { return cached }
+        let image = drawStone(hits: hits, width: totalW, height: totalH)
+        cache[key] = image
+        return image
+    }
+
     // MARK: - Gem Drawing
 
     private func drawGem(kind: TileKind, size: CGFloat) -> UIImage {
@@ -421,7 +432,87 @@ final class GemRenderer {
 
             case .none:
                 break
+
+            case .stone:
+                // Individual stone cells are drawn via stoneImage overlay; nothing here
+                break
             }
+        }
+    }
+
+    // MARK: - Stone Drawing (2×2)
+
+    private func drawStone(hits: Int, width: CGFloat, height: CGFloat) -> UIImage {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: height))
+        return renderer.image { ctx in
+            let context = ctx.cgContext
+            let rect = CGRect(x: 0, y: 0, width: width, height: height)
+            let inset: CGFloat = 4
+            let stoneRect = rect.insetBy(dx: inset, dy: inset)
+
+            // Shadow
+            context.saveGState()
+            context.setShadow(offset: CGSize(width: 0, height: 2), blur: 6,
+                              color: UIColor.black.withAlphaComponent(0.5).cgColor)
+
+            let stonePath = UIBezierPath(roundedRect: stoneRect, cornerRadius: width * 0.12)
+
+            // Base color
+            let baseGray: CGFloat = hits > 1 ? 0.45 : 0.55
+            let stoneColor = UIColor(white: baseGray, alpha: 1.0)
+            stoneColor.setFill()
+            stonePath.fill()
+            context.restoreGState()
+
+            // Gradient overlay
+            context.saveGState()
+            stonePath.addClip()
+            let topColor = UIColor(white: baseGray + 0.15, alpha: 1.0).cgColor
+            let bottomColor = UIColor(white: baseGray - 0.12, alpha: 1.0).cgColor
+            if let grad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                                     colors: [topColor, bottomColor] as CFArray,
+                                     locations: [0.0, 1.0]) {
+                context.drawLinearGradient(grad,
+                    start: CGPoint(x: width / 2, y: stoneRect.minY),
+                    end: CGPoint(x: width / 2, y: stoneRect.maxY),
+                    options: [])
+            }
+
+            // Crack lines (more if damaged)
+            context.setStrokeColor(UIColor.black.withAlphaComponent(0.25).cgColor)
+            context.setLineWidth(1.5)
+
+            // Main diagonal crack
+            context.move(to: CGPoint(x: width * 0.25, y: height * 0.15))
+            context.addLine(to: CGPoint(x: width * 0.45, y: height * 0.45))
+            context.addLine(to: CGPoint(x: width * 0.7, y: height * 0.55))
+            context.strokePath()
+
+            if hits <= 1 {
+                // Extra cracks when almost broken
+                context.setStrokeColor(UIColor.black.withAlphaComponent(0.35).cgColor)
+                context.move(to: CGPoint(x: width * 0.55, y: height * 0.2))
+                context.addLine(to: CGPoint(x: width * 0.5, y: height * 0.5))
+                context.addLine(to: CGPoint(x: width * 0.35, y: height * 0.75))
+                context.strokePath()
+
+                context.move(to: CGPoint(x: width * 0.7, y: height * 0.3))
+                context.addLine(to: CGPoint(x: width * 0.6, y: height * 0.6))
+                context.strokePath()
+            }
+
+            // Highlight spots
+            UIColor.white.withAlphaComponent(0.2).setFill()
+            UIBezierPath(ovalIn: CGRect(x: width * 0.15, y: height * 0.1, width: width * 0.15, height: height * 0.1)).fill()
+            UIBezierPath(ovalIn: CGRect(x: width * 0.6, y: height * 0.65, width: width * 0.12, height: height * 0.08)).fill()
+
+            context.restoreGState()
+
+            // Border
+            let borderColor = UIColor(white: baseGray - 0.2, alpha: 1.0)
+            borderColor.setStroke()
+            stonePath.lineWidth = 2.5
+            stonePath.stroke()
         }
     }
 }

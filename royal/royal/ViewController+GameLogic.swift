@@ -21,10 +21,10 @@ extension ViewController {
         showGameScreen()
 
         // Ensure the initial board has available moves
-        if !board.hasAvailableMoves() {
+        while !board.hasAvailableMoves() {
             board.shuffle()
-            renderBoard()
         }
+        renderBoard()
     }
 
     func handleSwap(from: GridPosition, to: GridPosition) {
@@ -80,6 +80,8 @@ extension ViewController {
         case .ice, .chain:
             board.tiles[position.row][position.column].obstacle = .none
             cleared = 1
+        case .stone:
+            break // Stone is handled separately via damageAdjacentStones
         case .none:
             break
         }
@@ -99,6 +101,24 @@ extension ViewController {
                 guard !expanded.contains(adj), !processed.contains(adj) else { continue }
                 processed.insert(adj)
                 cleared += processObstacleDamage(at: adj)
+            }
+        }
+        
+        // Damage adjacent stones (each stone only damaged once per resolve step)
+        var damagedStoneOrigins = Set<GridPosition>()
+        for pos in expanded {
+            for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                let r = pos.row + dr
+                let c = pos.column + dc
+                guard r >= 0, r < boardSize, c >= 0, c < boardSize else { continue }
+                let adj = GridPosition(row: r, column: c)
+                guard !expanded.contains(adj) else { continue }
+                if case .stone(_, let origin) = board.tiles[adj.row][adj.column].obstacle {
+                    if !damagedStoneOrigins.contains(origin) {
+                        damagedStoneOrigins.insert(origin)
+                        cleared += board.damageStone(origin: origin)
+                    }
+                }
             }
         }
         
@@ -166,6 +186,9 @@ extension ViewController {
             case .chain:
                 board.tiles[pos.row][pos.column].obstacle = .none
                 stepClearedObstacles += 1
+            case .stone:
+                // Stone cells cannot be directly matched; protect them
+                obstacleProtected.insert(pos)
             case .none:
                 break
             }
@@ -349,8 +372,9 @@ extension ViewController {
         
         if goalReached {
             isLevelFinished = true
-            let remainingMoves = max(currentLevel.goal.moveLimit - movesCount, 0)
-            let moveRatio = Double(remainingMoves) / Double(currentLevel.goal.moveLimit)
+            progressStore.resetFailCount(forLevel: currentLevelIndex)
+            let remainingMoves = max(effectiveMoveLimit - movesCount, 0)
+            let moveRatio = Double(remainingMoves) / Double(effectiveMoveLimit)
             let stars: Int
             if moveRatio >= 0.4 {
                 stars = 3
@@ -380,8 +404,9 @@ extension ViewController {
             return
         }
         
-        if movesCount >= currentLevel.goal.moveLimit {
+        if movesCount >= effectiveMoveLimit {
             isLevelFinished = true
+            progressStore.incrementFailCount(forLevel: currentLevelIndex)
             let details: String
             let tip: String
             switch currentLevel.goal.type {
@@ -422,7 +447,13 @@ extension ViewController {
         guard !board.hasAvailableMoves() else { return }
         isResolvingMove = true
 
-        board.shuffle()
+        // Keep shuffling until moves exist
+        var attempts = 0
+        repeat {
+            board.shuffle()
+            attempts += 1
+        } while !board.hasAvailableMoves() && attempts < 10
+
         renderBoard()
 
         for row in 0..<boardSize {

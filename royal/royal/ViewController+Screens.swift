@@ -106,6 +106,9 @@ extension ViewController {
   func renderBoard() {
     let gemSize: CGFloat = 60
     
+    // Remove previous stone overlays (tagged 102)
+    boardStackView.viewWithTag(102)?.removeFromSuperview()
+    
     for row in 0..<boardSize {
       for column in 0..<boardSize {
         let tile = board.tiles[row][column]
@@ -118,6 +121,15 @@ extension ViewController {
         // Remove old overlay views (tagged 100 for power-up, 101 for obstacle)
         button.viewWithTag(100)?.removeFromSuperview()
         button.viewWithTag(101)?.removeFromSuperview()
+        
+        // Stone cells: hide gem, show nothing per-cell (the 2x2 overlay is drawn separately)
+        if tile.obstacle.isStone {
+          button.setImage(nil, for: .normal)
+          button.layer.borderWidth = 0
+          button.layer.borderColor = nil
+          button.alpha = 1.0
+          continue
+        }
         
         // Gem image
         let gemImg = GemRenderer.shared.gemImage(for: tile.kind, size: gemSize)
@@ -181,10 +193,60 @@ extension ViewController {
         }
       }
     }
+    
+    // Draw 2×2 stone overlays
+    renderStoneOverlays()
+  }
+  
+  private func renderStoneOverlays() {
+    // Remove old stone overlays
+    for view in boardStackView.subviews where view.tag == 102 {
+      view.removeFromSuperview()
+    }
+    
+    // Find unique stone origins
+    var drawnOrigins = Set<GridPosition>()
+    for row in 0..<boardSize {
+      for col in 0..<boardSize {
+        if case .stone(let hits, let origin) = board.tiles[row][col].obstacle {
+          guard !drawnOrigins.contains(origin) else { continue }
+          drawnOrigins.insert(origin)
+          
+          // Get the buttons at the 4 corners
+          let topLeft = tileButtons[origin.row][origin.column]
+          let bottomRight = tileButtons[min(origin.row + 1, boardSize - 1)][min(origin.column + 1, boardSize - 1)]
+          
+          // We need to compute frames in boardStackView coordinate space
+          guard let tlParent = topLeft.superview, let brParent = bottomRight.superview else { continue }
+          let tlFrame = tlParent.convert(topLeft.frame, to: boardStackView)
+          let brFrame = brParent.convert(bottomRight.frame, to: boardStackView)
+          
+          let stoneFrame = CGRect(
+            x: tlFrame.minX,
+            y: tlFrame.minY,
+            width: brFrame.maxX - tlFrame.minX,
+            height: brFrame.maxY - tlFrame.minY
+          )
+          
+          let cellSize = topLeft.bounds.width
+          let spacing: CGFloat = 8 // matches boardStackView spacing
+          let stoneImg = GemRenderer.shared.stoneImage(hits: hits, cellSize: cellSize, spacing: spacing)
+          
+          let stoneView = UIImageView(image: stoneImg)
+          stoneView.tag = 102
+          stoneView.contentMode = .scaleAspectFill
+          stoneView.clipsToBounds = true
+          stoneView.frame = stoneFrame
+          stoneView.isUserInteractionEnabled = false
+          stoneView.layer.cornerRadius = cellSize * 0.12
+          boardStackView.addSubview(stoneView)
+        }
+      }
+    }
   }
   
   func updateStatus(_ text: String) {
-    let remainingMoves = max(currentLevel.goal.moveLimit - movesCount, 0)
+    let remainingMoves = max(effectiveMoveLimit - movesCount, 0)
     subtitleLabel.text = "Уровень \(currentLevel.number): \(currentLevel.title)"
     
     switch currentLevel.goal.type {
@@ -196,14 +258,14 @@ extension ViewController {
       attachment.bounds = CGRect(x: 0, y: -gemSize * 0.15, width: gemSize, height: gemSize)
       let attr = NSMutableAttributedString(string: "Цель: \(count) ", attributes: [.foregroundColor: UIColor.white, .font: progressLabel.font!])
       attr.append(NSAttributedString(attachment: attachment))
-      attr.append(NSAttributedString(string: " за \(currentLevel.goal.moveLimit) ходов  |  Собрано: \(collectedGoalTiles)/\(count)", attributes: [.foregroundColor: UIColor.white, .font: progressLabel.font!]))
+      attr.append(NSAttributedString(string: " за \(effectiveMoveLimit) ходов  |  Собрано: \(collectedGoalTiles)/\(count)", attributes: [.foregroundColor: UIColor.white, .font: progressLabel.font!]))
       progressLabel.attributedText = attr
     case .reachScore(let target):
       progressLabel.attributedText = nil
-      progressLabel.text = "Цель: \(target) очков за \(currentLevel.goal.moveLimit) ходов  |  Набрано: \(score)/\(target)"
+      progressLabel.text = "Цель: \(target) очков за \(effectiveMoveLimit) ходов  |  Набрано: \(score)/\(target)"
     case .clearObstacles(let count):
       progressLabel.attributedText = nil
-      progressLabel.text = "Цель: разбить \(count) преград за \(currentLevel.goal.moveLimit) ходов  |  Разбито: \(clearedObstacles)/\(count)"
+      progressLabel.text = "Цель: разбить \(count) преград за \(effectiveMoveLimit) ходов  |  Разбито: \(clearedObstacles)/\(count)"
     }
     
     let comboText = comboMultiplier > 1 ? "  |  x\(comboMultiplier) комбо!" : ""
