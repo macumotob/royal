@@ -189,10 +189,20 @@ extension ViewController {
     
     switch currentLevel.goal.type {
     case .collect(let kind, let count):
-      progressLabel.text = "Цель: \(count) \(kind.symbol) за \(currentLevel.goal.moveLimit) ходов  |  Собрано: \(collectedGoalTiles)/\(count)"
+      let gemSize: CGFloat = progressLabel.font.lineHeight
+      let gemImage = GemRenderer.shared.gemImage(for: kind, size: gemSize)
+      let attachment = NSTextAttachment()
+      attachment.image = gemImage
+      attachment.bounds = CGRect(x: 0, y: -gemSize * 0.15, width: gemSize, height: gemSize)
+      let attr = NSMutableAttributedString(string: "Цель: \(count) ", attributes: [.foregroundColor: UIColor.white, .font: progressLabel.font!])
+      attr.append(NSAttributedString(attachment: attachment))
+      attr.append(NSAttributedString(string: " за \(currentLevel.goal.moveLimit) ходов  |  Собрано: \(collectedGoalTiles)/\(count)", attributes: [.foregroundColor: UIColor.white, .font: progressLabel.font!]))
+      progressLabel.attributedText = attr
     case .reachScore(let target):
+      progressLabel.attributedText = nil
       progressLabel.text = "Цель: \(target) очков за \(currentLevel.goal.moveLimit) ходов  |  Набрано: \(score)/\(target)"
     case .clearObstacles(let count):
+      progressLabel.attributedText = nil
       progressLabel.text = "Цель: разбить \(count) преград за \(currentLevel.goal.moveLimit) ходов  |  Разбито: \(clearedObstacles)/\(count)"
     }
     
