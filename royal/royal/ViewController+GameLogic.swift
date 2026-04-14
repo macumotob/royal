@@ -1,6 +1,9 @@
 import UIKit
 
 extension ViewController {
+    
+    // MARK: - Level Management
+    
     func startLevel(index: Int) {
         currentLevelIndex = max(0, min(index, levels.count - 1))
         board = Match3Board(size: boardSize, obstacles: currentLevel.obstacles)
@@ -13,6 +16,7 @@ extension ViewController {
         isResolvingMove = false
         comboMultiplier = 1
         lastMatchTime = nil
+        lastMatchStepScore = 0 // Добавлено: инициализация переменной
         renderBoard()
         showGameScreen()
 
@@ -54,7 +58,9 @@ extension ViewController {
             }
         }
     }
-
+    
+    // MARK: - Combo System
+    
     func updateCombo() {
         if let lastTime = lastMatchTime, Date().timeIntervalSince(lastTime) < 0.5 {
             comboMultiplier = min(comboMultiplier + 1, 5)
@@ -63,7 +69,44 @@ extension ViewController {
         }
         lastMatchTime = Date()
     }
-
+    
+    // MARK: - Obstacle Processing
+    
+    private func processObstacleDamage(at position: GridPosition) -> Int {
+        var cleared = 0
+        switch board.tiles[position.row][position.column].obstacle {
+        case .ice(let hits) where hits > 1:
+            board.tiles[position.row][position.column].obstacle = .ice(hits: hits - 1)
+        case .ice, .chain:
+            board.tiles[position.row][position.column].obstacle = .none
+            cleared = 1
+        case .none:
+            break
+        }
+        return cleared
+    }
+    
+    private func damageAdjacentObstacles(to expanded: Set<GridPosition>) -> Int {
+        var cleared = 0
+        var processed = Set<GridPosition>()
+        
+        for pos in expanded {
+            for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                let r = pos.row + dr
+                let c = pos.column + dc
+                guard r >= 0, r < boardSize, c >= 0, c < boardSize else { continue }
+                let adj = GridPosition(row: r, column: c)
+                guard !expanded.contains(adj), !processed.contains(adj) else { continue }
+                processed.insert(adj)
+                cleared += processObstacleDamage(at: adj)
+            }
+        }
+        
+        return cleared
+    }
+    
+    // MARK: - Match Resolution Chain
+    
     func animateResolveChain(totalRemoved: Int, removedByKind: [TileKind: Int], totalClearedObstacles: Int = 0) {
         let matched = board.currentMatches()
         guard !matched.isEmpty else {
@@ -78,7 +121,7 @@ extension ViewController {
             score += totalStepScore
             clearedObstacles += totalClearedObstacles
             
-            // Бонус за спец-фишки
+            // Бонус за спец-фишки (суммируем)
             if lastMatchStepScore > 0 {
                 score += lastMatchStepScore
                 lastMatchStepScore = 0
@@ -103,14 +146,15 @@ extension ViewController {
             }
             return
         }
-
+        
         let runs = board.allMatchRuns()
         let spawns = board.determinePowerUpSpawns(runs: runs, matched: matched)
         let expanded = board.expandWithPowerUps(matched)
-
+        
         // Process obstacles on matched/expanded tiles
         var obstacleProtected = Set<GridPosition>()
         var stepClearedObstacles = 0
+        
         for pos in expanded {
             switch board.tiles[pos.row][pos.column].obstacle {
             case .ice(let hits) where hits > 1:
@@ -126,39 +170,19 @@ extension ViewController {
                 break
             }
         }
-
+        
         // Damage obstacles adjacent to matched tiles
-        var processedAdjacent = Set<GridPosition>()
-        for pos in expanded {
-            for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
-                let r = pos.row + dr
-                let c = pos.column + dc
-                guard r >= 0, r < boardSize, c >= 0, c < boardSize else { continue }
-                let adj = GridPosition(row: r, column: c)
-                guard !expanded.contains(adj), !processedAdjacent.contains(adj) else { continue }
-                processedAdjacent.insert(adj)
-                switch board.tiles[r][c].obstacle {
-                case .ice(let hits) where hits > 1:
-                    board.tiles[r][c].obstacle = .ice(hits: hits - 1)
-                case .ice:
-                    board.tiles[r][c].obstacle = .none
-                    stepClearedObstacles += 1
-                case .chain:
-                    board.tiles[r][c].obstacle = .none
-                    stepClearedObstacles += 1
-                case .none:
-                    break
-                }
-            }
-        }
-
+        stepClearedObstacles += damageAdjacentObstacles(to: expanded)
+        
         var removalSet = expanded
         let spawnPositionSet = Set(spawns.map { $0.position })
         removalSet.subtract(spawnPositionSet)
         removalSet.subtract(obstacleProtected)
-
+        
         var updatedByKind = removedByKind
         var powerUpBonus = 0
+        
+        // Подсчёт удалённых фишек (включая те, что на местах спавна спец-фишек)
         for pos in removalSet {
             updatedByKind[board.tiles[pos.row][pos.column].kind, default: 0] += 1
             
@@ -167,37 +191,40 @@ extension ViewController {
                 powerUpBonus += 25
             }
         }
-        // Фишки на позициях спец-фишек тоже считаются собранными
+        
+        // Фишки на позициях спец-фишек тоже считаются собранными для цели collect
         for pos in spawnPositionSet {
             updatedByKind[board.tiles[pos.row][pos.column].kind, default: 0] += 1
         }
+        
         let updatedTotal = totalRemoved + removalSet.count
         let updatedClearedObstacles = totalClearedObstacles + stepClearedObstacles
         
-        lastMatchStepScore = powerUpBonus
-
+        // Суммируем бонус за спец-фишки (исправлено: теперь накапливается)
+        lastMatchStepScore += powerUpBonus
+        
         animateRemoval(at: removalSet) { [weak self] in
             guard let self else { return }
-
+            
             if !spawns.isEmpty {
                 SoundManager.play(.powerUpCreated)
             }
-
+            
             let hasPowerUpActivation = expanded.count > matched.count
             if hasPowerUpActivation {
                 SoundManager.play(.powerUpActivated)
             } else {
                 SoundManager.play(.matchRemove)
             }
-
+            
             for spawn in spawns {
                 self.board.tiles[spawn.position.row][spawn.position.column].powerUp = spawn.powerUp
             }
-
+            
             let drops = self.board.refillAfterRemoval(removalSet)
             self.renderBoard()
             self.prepareDropTransforms(drops)
-
+            
             self.animateDrops(drops) { [weak self] in
                 guard let self else { return }
                 self.animateResolveChain(totalRemoved: updatedTotal, removedByKind: updatedByKind, totalClearedObstacles: updatedClearedObstacles)
@@ -243,6 +270,12 @@ extension ViewController {
     }
 
     func animateRemoval(at positions: Set<GridPosition>, completion: @escaping () -> Void) {
+        // Добавлена проверка на пустой набор
+        guard !positions.isEmpty else {
+            completion()
+            return
+        }
+        
         UIView.animate(withDuration: 0.2, animations: {
             for pos in positions {
                 let button = self.tileButtons[pos.row][pos.column]
@@ -253,7 +286,7 @@ extension ViewController {
             completion()
         })
     }
-
+    
     func prepareDropTransforms(_ drops: [TileDrop]) {
         for drop in drops {
             let button = tileButtons[drop.toRow][drop.column]
@@ -265,7 +298,7 @@ extension ViewController {
             }
         }
     }
-
+    
     func animateDrops(_ drops: [TileDrop], completion: @escaping () -> Void) {
         guard !drops.isEmpty else {
             completion()
@@ -300,7 +333,9 @@ extension ViewController {
             completion()
         }
     }
-
+    
+    // MARK: - Level Evaluation
+    
     func evaluateLevelState() {
         let goalReached: Bool
         switch currentLevel.goal.type {
@@ -311,7 +346,7 @@ extension ViewController {
         case .clearObstacles(let count):
             goalReached = clearedObstacles >= count
         }
-
+        
         if goalReached {
             isLevelFinished = true
             let remainingMoves = max(currentLevel.goal.moveLimit - movesCount, 0)
@@ -324,11 +359,11 @@ extension ViewController {
             } else {
                 stars = 1
             }
-
+            
             progressStore.unlockLevel(afterCompleting: currentLevelIndex, totalLevels: levels.count)
             progressStore.saveStars(stars, forLevel: currentLevelIndex)
             SoundManager.play(.levelComplete)
-
+            
             let starsText = String(repeating: "⭐", count: stars)
             if currentLevelIndex + 1 < levels.count {
                 updateStatus("Уровень \(currentLevel.number) пройден! \(starsText) Очки: \(score).")
@@ -344,7 +379,7 @@ extension ViewController {
             }
             return
         }
-
+        
         if movesCount >= currentLevel.goal.moveLimit {
             isLevelFinished = true
             let details: String
@@ -422,22 +457,22 @@ extension ViewController {
 
     func showCompletionAlert(title: String, message: String) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-
+        
         if title == "Победа", currentLevelIndex + 1 < levels.count {
             alert.addAction(UIAlertAction(title: "Следующий уровень", style: .default) { [weak self] _ in
                 guard let self else { return }
                 self.startLevel(index: self.currentLevelIndex + 1)
             })
         }
-
+        
         alert.addAction(UIAlertAction(title: "К карте", style: .default) { [weak self] _ in
             self?.showMapScreen()
         })
-
+        
         alert.addAction(UIAlertAction(title: "Переиграть", style: .default) { [weak self] _ in
             self?.didTapShuffle()
         })
-
+        
         present(alert, animated: true)
     }
 }
